@@ -1,9 +1,14 @@
 # Personal Makefile script for test and analysis
 PYTHON = python3
 EMU = ./build/emu
+CONFIG = KunminghuV2Config
 
 $(EMU):
-	make emu -j9 EMU_THREADS=8 EMU_TRACE=1 CONFIG=MinimalConfig | tee compile.log
+	NOOP_HOME=$(shell pwd) \
+	NEMU_HOME=$(shell pwd) \
+	make emu -j9 EMU_THREADS=8 EMU_TRACE=1 CONFIG=$(CONFIG) | tee compile.log
+
+gen: $(EMU)
 
 WORKLOAD = ./ready-to-run/microbench.bin
 DIFF_SO = ./ready-to-run/riscv64-nemu-interpreter-so
