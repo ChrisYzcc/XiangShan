@@ -31,11 +31,9 @@ run: $(EMU)
 	-@rm ./rpt/dcache_mshr.log
 	$(EMU) -i $(WORKLOAD_PATH) --enable-cache-monitor --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
-$(SIM_OUT): run
-$(SIM_ERR): run
-
 # Performance
 PERF_CSV = ./rpt/stats.csv
-perf: $(SIM_ERR)
+perf:
 	-@mkdir rpt
 	$(PYTHON) ./scripts/perf.py $(SIM_ERR) -o $(PERF_CSV)
+	$(PYTHON) ./scripts/mshr_analysis.py
