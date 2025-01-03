@@ -10,8 +10,8 @@ $(EMU):
 
 gen: $(EMU)
 
-WORKLOAD？= microbench
-WORKLOAD_PATH？=
+WORKLOAD ?= microbench
+WORKLOAD_PATH ?=
 DIFF_SO = ./ready-to-run/riscv64-nemu-interpreter-so
 
 SIM_OUT = ./rpt/simulation_out.txt
