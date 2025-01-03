@@ -890,6 +890,58 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
   val (a_to_d_penalty_sample, a_to_d_penalty) = TransactionLatencyCounter(start_counting, GatedValidRegNext(io.mem_grant.fire && refill_done))
   XSPerfHistogram("a_to_d_penalty", a_to_d_penalty, a_to_d_penalty_sample, 0, 20, 1, true, true)
   XSPerfHistogram("a_to_d_penalty", a_to_d_penalty, a_to_d_penalty_sample, 20, 100, 10, true, false)
+
+   // Monitor Entry Allocation Situation
+   val s_unalloc :: s_prefetch :: s_mixed :: s_other :: Nil = Enum(4)
+   val state = RegInit(s_unalloc)
+   val state_nxt = WireInit(state)
+   dontTouch(state)
+
+   when (reset.asBool) {
+     state := s_unalloc
+   }.otherwise {
+     state := state_nxt
+   }
+
+   switch (state) {
+     is (s_unalloc) {
+       when (RegNext(primary_fire) && io.miss_req_pipe_reg.alloc){
+         when (io.miss_req_pipe_reg.req.isFromPrefetch){
+           state_nxt := s_prefetch
+         }.otherwise {
+           state_nxt := s_other
+         }
+       }.elsewhen (release_entry){
+         state_nxt := s_unalloc
+       }
+     }
+
+     is (s_prefetch) {
+       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge){
+         when (~io.miss_req_pipe_reg.req.isFromPrefetch){
+           state_nxt := s_mixed
+         }
+       }.elsewhen (release_entry){
+         state_nxt := s_unalloc
+       }
+     }
+
+     is (s_mixed) {
+       when (release_entry){
+         state_nxt := s_unalloc
+       }
+     }
+
+     is (s_other) {
+       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge){
+         when (io.miss_req_pipe_reg.req.isFromPrefetch){
+           state_nxt := s_mixed
+         }
+       }.elsewhen (release_entry){
+         state_nxt := s_unalloc
+       }
+     }
+   }
 }
 
 class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DCacheModule 
