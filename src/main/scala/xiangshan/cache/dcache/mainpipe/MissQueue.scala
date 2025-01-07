@@ -944,7 +944,7 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
      }
    }
 
-   val EntryStateTable = ChiselDB.createTable(s"mshrStateTable$index", new MSHRStateEntry)
+   val EntryStateTable = ChiselDB.createTable(s"mshrStateTable$index", new MSHRStateEntry, true)
    val mshrState = Wire(new MSHRStateEntry)
    mshrState.timeCnt := GTimer()
    mshrState.state := state
