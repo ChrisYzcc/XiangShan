@@ -9,6 +9,11 @@ import xiangshan.backend.fu.FuType
 import utility.MemReqSource
 import xiangshan.mem.prefetch.HasL1PrefetchHelper
 
+class MSHRStateEntry(implicit p: Parameters) extends XSBundle{
+  val timeCnt = UInt(XLEN.W)
+  val state = UInt(2.W)
+}
+
 /** Mem */
 class LoadMissEntry(implicit p: Parameters) extends DCacheBundle {
   val timeCnt = UInt(XLEN.W)
