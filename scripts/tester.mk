@@ -16,7 +16,7 @@ gen_dram:
 	NOOP_HOME=$(shell pwd) \
     NEMU_HOME=$(shell pwd) \
     DRAMSIM3_HOME=$(NOOP_HOME)/../DRAMsim3 \
-    make emu -j9 EMU_THREADS=8 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
+    make emu -j200 EMU_THREADS=8 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
 
 WORKLOAD ?= microbench
 WORKLOAD_PATH ?=
@@ -48,9 +48,11 @@ perf:
 
 # SimPoint
 PERF_PATH = $(NOOP_HOME)/../env-scripts/perf
-GCPT_PATH = /nfs/home/share/checkpoints_profiles/spec06_rv64gcb_o2_20m/take_cpt
+GCPT_PATH = /nfs/home/share/liyanqin/spec06_rv64gcb_O3_20m_gcc12.2.0-intFpcOff-jeMalloc/checkpoint-0-0-0
 JSON_PATH = $(NOOP_HOME)/scripts/simpoint_summary.json
 XS_PATH = $(NOOP_HOME)
 
 simpoint:
-	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume --cache-monitor
+	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
+	-@rm -rf $(NOOP_HOME)/rpt/dcache_mshr-*.log
+	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume
