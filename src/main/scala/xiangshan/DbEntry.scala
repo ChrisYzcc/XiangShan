@@ -14,6 +14,10 @@ class MSHRStateEntry(implicit p: Parameters) extends XSBundle{
   val state = UInt(2.W)
 }
 
+class LoadDelayEntry(implicit p: Parameters) extends XSBundle{
+  val delay = UInt(XLEN.W)
+}
+
 /** Mem */
 class LoadMissEntry(implicit p: Parameters) extends DCacheBundle {
   val timeCnt = UInt(XLEN.W)
