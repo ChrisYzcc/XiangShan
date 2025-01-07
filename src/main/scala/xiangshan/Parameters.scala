@@ -562,7 +562,7 @@ case class DebugOptions
   PerfLevel: String = "VERBOSE",
   UseDRAMSim: Boolean = false,
   EnableConstantin: Boolean = false,
-  EnableChiselDB: Boolean = false,
+  EnableChiselDB: Boolean = true,
   AlwaysBasicDB: Boolean = true,
   EnableRollingDB: Boolean = false
 )
