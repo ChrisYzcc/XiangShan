@@ -1449,6 +1449,21 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
         )
       }
     }
+
+    // Assembly Load Instr Datas
+    val LoadInstrDelayTable = ChiselDB.createTable("LoadInstDelaysTable" + p(XSCoreParamsKey).HartId.toString, new LoadDelayEntry, true)
+    for (wb <- exuWBs){
+      val load_delay_entry = Wire(new LoadDelayEntry)
+      load_delay_entry.delay := wb.bits.debugInfo.writebackTime - wb.bits.debugInfo.issueTime
+
+      LoadInstrDelayTable.log(
+        data = load_delay_entry,
+        en = wb.valid && debug_microOp(wb.bits.robIdx.value).commitType === CommitType.LOAD,
+        site = instSiteName,
+        clock = clock,
+        reset = reset
+      )
+    }
   }
 
 
