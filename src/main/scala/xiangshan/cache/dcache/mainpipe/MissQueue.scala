@@ -330,7 +330,7 @@ class CMOUnit(edge: TLEdgeOut)(implicit p: Parameters) extends DCacheModule {
   assert(!(state =/= s_wresp && io.resp_chanD.valid))
 }
 
-class MissEntry(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DCacheModule 
+class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters) extends DCacheModule
   with HasCircularQueuePtrHelper
  {
   val io = IO(new Bundle() {
@@ -936,7 +936,19 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
        }
      }
    }
-}
+
+   val EntryStateTable = ChiselDB.createTable(s"mshrStateTable$index", new MSHRStateEntry)
+   val mshrState = Wire(new MSHRStateEntry)
+   mshrState.timeCnt := GTimer()
+   mshrState.state := state
+   EntryStateTable.log(
+     data = mshrState,
+     en = (GTimer()(5, 0) === 32.U),
+     site = "miss_entry_" + index.toString,
+     clock = clock,
+     reset = reset
+   )
+ }
 
 class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DCacheModule 
   with HasPerfEvents 
@@ -1003,8 +1015,9 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
   })
 
   // 128KBL1: FIXME: provide vaddr for l2
-
-  val entries = Seq.fill(cfg.nMissEntries)(Module(new MissEntry(edge, reqNum)))
+  val entries = Seq.tabulate(cfg.nMissEntries) { i =>
+    Module(new MissEntry(edge, reqNum, i))
+  }
   val cmo_unit = Module(new CMOUnit(edge))
 
   val miss_req_pipe_reg = RegInit(0.U.asTypeOf(new MissReqPipeRegBundle(edge)))
