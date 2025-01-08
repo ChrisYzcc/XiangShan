@@ -1416,7 +1416,7 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   if (!env.FPGAPlatform) {
     val instTableName = "InstTable" + p(XSCoreParamsKey).HartId.toString
     val instSiteName = "Rob" + p(XSCoreParamsKey).HartId.toString
-    val debug_instTable = ChiselDB.createTable(instTableName, new InstInfoEntry)
+    val debug_instTable = ChiselDB.createTable(instTableName, new InstInfoEntry, true)
     for (wb <- exuWBs) {
       when(wb.valid) {
         val debug_instData = Wire(new InstInfoEntry)
@@ -1449,21 +1449,30 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
         )
       }
     }
+  }
 
-    // Assembly Load Instr Datas
-    val LoadInstrDelayTable = ChiselDB.createTable("LoadInstDelaysTable" + p(XSCoreParamsKey).HartId.toString, new LoadDelayEntry, true)
-    for (wb <- exuWBs){
-      val load_delay_entry = Wire(new LoadDelayEntry)
-      load_delay_entry.delay := wb.bits.debugInfo.writebackTime - wb.bits.debugInfo.issueTime
+  // collect load instruction datas
+  val LoadInstrDelayTable = ChiselDB.createTable("LoadInstDelaysTable" + p(XSCoreParamsKey).HartId.toString, new LoadDelayEntry, true)
 
-      LoadInstrDelayTable.log(
-        data = load_delay_entry,
-        en = wb.valid && debug_microOp(wb.bits.robIdx.value).commitType === CommitType.LOAD,
-        site = instSiteName,
-        clock = clock,
-        reset = reset
-      )
+  val load_block_cnt_vec = RegInit(VecInit(Seq.fill(CommitWidth)(0.U(XLEN.W))))
+  val load_delay_entry_vec = Wire(Vec(CommitWidth, new  LoadDelayEntry))
+  for (i <- 0 until CommitWidth) {
+    when (robEntries(deqPtrVec(i).value).valid && robEntries(deqPtrVec(i).value).isWritebacked){
+      load_block_cnt_vec(i) := 0.U
+    }.elsewhen(robEntries(deqPtrVec(i).value).valid
+        && !robEntries(deqPtrVec(i).value).isWritebacked
+        && debug_microOp(deqPtrVec(i).value).commitType === CommitType.LOAD){
+      load_block_cnt_vec(i) := 0.U
     }
+
+    load_delay_entry_vec(i).delay := load_block_cnt_vec(i)
+    LoadInstrDelayTable.log(
+      data = load_delay_entry_vec(i),
+      en = robEntries(deqPtrVec(i).value).valid && debug_microOp(deqPtrVec(i).value).commitType === CommitType.LOAD && allCommitted,
+      site = "rob" + p(XSCoreParamsKey).HartId.toString,
+      clock = clock,
+      reset = reset
+    )
   }
 
 
