@@ -68,6 +68,14 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val isvec = RegInit(VecInit(List.fill(VirtualLoadQueueSize)(false.B))) // vector load flow
   val committed = Reg(Vec(VirtualLoadQueueSize, Bool()))
 
+  // used for offchip access monitor
+  val timer_vec = RegInit(VecInit(List.fill(VirtualLoadQueueSize)(0.U(XLEN.W))))
+  val LoadLatencyTable = ChiselDB.createTable(
+    "LoadLatencyTable" + p(XSCoreParamsKey).HartId.toString,
+    new LoadDelayEntry,
+    true
+  )
+
   /**
    * used for debug
    */
@@ -182,6 +190,15 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
 
       debug_mmio(i) := false.B
       debug_paddr(i) := 0.U
+
+      timer_vec(i) := 0.U
+    }
+  }
+
+  // update timer_vec
+  for (i <- 0 until VirtualLoadQueueSize){
+    when (allocated(i)){
+      timer_vec(i) := timer_vec(i) + 1.U
     }
   }
 
@@ -201,6 +218,16 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   (0 until DeqPtrMoveStride).map(i => {
     when (commitCount > i.U) {
       allocated((deqPtr+i.U).value) := false.B
+
+      val load_delay_entry = Wire(new LoadDelayEntry)
+      load_delay_entry.delay := timer_vec((deqPtr + i.U).value)
+      LoadLatencyTable.log(
+        data = load_delay_entry,
+        en = commitCount > i.U,
+        site = "virtualQueue",
+        clock = clock,
+        reset = reset
+      )
     }
     XSError(commitCount > i.U && !allocated((deqPtr+i.U).value), s"why commit invalid entry $i?\n")
   })

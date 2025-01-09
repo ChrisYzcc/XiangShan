@@ -1449,31 +1449,6 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
     }
   }
 
-  // collect load instruction datas
-  val LoadInstrDelayTable = ChiselDB.createTable("LoadInstDelaysTable" + p(XSCoreParamsKey).HartId.toString, new LoadDelayEntry, true)
-
-  val load_block_cnt_vec = RegInit(VecInit(Seq.fill(CommitWidth)(0.U(XLEN.W))))
-  val load_delay_entry_vec = Wire(Vec(CommitWidth, new  LoadDelayEntry))
-  for (i <- 0 until CommitWidth) {
-    when (robEntries(deqPtrVec(i).value).valid && robEntries(deqPtrVec(i).value).isWritebacked && allCommitted){
-      load_block_cnt_vec(i) := 0.U
-    }.elsewhen(robEntries(deqPtrVec(i).value).valid
-        && !robEntries(deqPtrVec(i).value).isWritebacked
-        && debug_microOp(deqPtrVec(i).value).commitType === CommitType.LOAD){
-      load_block_cnt_vec(i) := load_block_cnt_vec(i) + 1.U
-    }
-
-    load_delay_entry_vec(i).delay := load_block_cnt_vec(i)
-    LoadInstrDelayTable.log(
-      data = load_delay_entry_vec(i),
-      en = robEntries(deqPtrVec(i).value).valid && debug_microOp(deqPtrVec(i).value).commitType === CommitType.LOAD && allCommitted,
-      site = "rob" + p(XSCoreParamsKey).HartId.toString,
-      clock = clock,
-      reset = reset
-    )
-  }
-
-
   //difftest signals
   val firstValidCommit = (deqPtr + PriorityMux(io.commits.commitValid, VecInit(List.tabulate(CommitWidth)(_.U(log2Up(CommitWidth).W))))).value
 
