@@ -37,7 +37,7 @@ endif
 run: $(EMU)
 	-@mkdir rpt
 	-@rm $(NOOP_HOME)/rpt/*.txt
-	$(EMU) -i $(WORKLOAD_PATH) --dump-db --dump-wave -b 10000 -e 21000 --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
+	$(EMU) -i $(WORKLOAD_PATH) --dump-db --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
 # Performance
 PERF_CSV = ./rpt/stats.csv
