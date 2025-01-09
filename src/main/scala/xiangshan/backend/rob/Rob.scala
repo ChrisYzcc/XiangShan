@@ -1455,12 +1455,12 @@ class RobImp(override val wrapper: Rob)(implicit p: Parameters, params: BackendP
   val load_block_cnt_vec = RegInit(VecInit(Seq.fill(CommitWidth)(0.U(XLEN.W))))
   val load_delay_entry_vec = Wire(Vec(CommitWidth, new  LoadDelayEntry))
   for (i <- 0 until CommitWidth) {
-    when (robEntries(deqPtrVec(i).value).valid && robEntries(deqPtrVec(i).value).isWritebacked){
+    when (robEntries(deqPtrVec(i).value).valid && robEntries(deqPtrVec(i).value).isWritebacked && allCommitted){
       load_block_cnt_vec(i) := 0.U
     }.elsewhen(robEntries(deqPtrVec(i).value).valid
         && !robEntries(deqPtrVec(i).value).isWritebacked
         && debug_microOp(deqPtrVec(i).value).commitType === CommitType.LOAD){
-      load_block_cnt_vec(i) := 0.U
+      load_block_cnt_vec(i) := load_block_cnt_vec(i) + 1.U
     }
 
     load_delay_entry_vec(i).delay := load_block_cnt_vec(i)
