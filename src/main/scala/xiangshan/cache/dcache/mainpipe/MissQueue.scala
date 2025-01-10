@@ -1050,13 +1050,17 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
   mshr_state_table.log(
     data = mshr_state_entry,
     en = ~accept && io.req.valid && ~io.req.bits.cancel,
-    site = "MissQueue" + io.hartId.toString(),
+    site = "MissQueue" + p(XSCoreParamsKey).HartId.toString,
     clock = clock,
     reset = reset
   )
   XSPerfAccumulate(
     "missQueueBlock",
     ~accept && io.req.valid && ~io.req.bits.cancel
+  )
+  XSPerfAccumulate(
+    "missQueueBlockAndHavePrefetched",
+    ~accept && io.req.valid && ~io.req.bits.cancel && mshr_prefetch_cnt > 0.U
   )
 
   // generate req_ready for each miss request for better timing
