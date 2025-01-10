@@ -90,6 +90,9 @@ class CSR(cfg: FuConfig)(implicit p: Parameters) extends FuncUnit(cfg)
     CSROpType.isCSRRSorRC(func)
   )
 
+  private val waddrReg = RegEnable(addr, 0.U(12.W), io.in.fire)
+  private val wdataReg = RegEnable(wdata, 0.U(64.W), io.in.fire)
+  
   private val robIdxReg = RegEnable(io.in.bits.ctrl.robIdx, io.in.fire)
   private val thisRobIdx = Wire(new RobPtr)
   when (io.in.valid) {
@@ -107,7 +110,7 @@ class CSR(cfg: FuConfig)(implicit p: Parameters) extends FuncUnit(cfg)
       in.bits.op  := CSROpType.getCSROp(func)
       in.bits.addr := addr
       in.bits.src := src
-      in.bits.wdata := wdata
+      in.bits.wdata := wdataReg
       in.bits.mret := isMret
       in.bits.mnret := isMNret
       in.bits.sret := isSret
@@ -330,8 +333,6 @@ class CSR(cfg: FuConfig)(implicit p: Parameters) extends FuncUnit(cfg)
       custom.l1D_pf_active_stride     := csrMod.io.status.custom.l1D_pf_active_stride
       custom.l1D_pf_enable_stride     := csrMod.io.status.custom.l1D_pf_enable_stride
       custom.l2_pf_store_only         := csrMod.io.status.custom.l2_pf_store_only
-      // ICache
-      custom.icache_parity_enable     := csrMod.io.status.custom.icache_parity_enable
       // Load violation predictor
       custom.lvpred_disable           := csrMod.io.status.custom.lvpred_disable
       custom.no_spec_load             := csrMod.io.status.custom.no_spec_load
@@ -354,8 +355,8 @@ class CSR(cfg: FuConfig)(implicit p: Parameters) extends FuncUnit(cfg)
       // distribute csr write signal
       // write to frontend and memory
       custom.distribute_csr.w.valid := csrMod.io.distributedWenLegal
-      custom.distribute_csr.w.bits.addr := addr
-      custom.distribute_csr.w.bits.data := wdata
+      custom.distribute_csr.w.bits.addr := waddrReg
+      custom.distribute_csr.w.bits.data := wdataReg
       // rename single step
       custom.singlestep := csrMod.io.status.singleStepFlag
       // trigger

@@ -280,7 +280,10 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
     val chi_openllc_opt = Option.when(enableCHI)(
       withClockAndReset(io.clock.asClock, io.reset) {
         Module(new OpenLLC()(p.alter((site, here, up) => {
-          case OpenLLCParamKey => soc.OpenLLCParamsOpt.get
+          case OpenLLCParamKey => soc.OpenLLCParamsOpt.get.copy(
+            hartIds = tiles.map(_.HartId),
+            FPGAPlatform = debugOpts.FPGAPlatform
+          )
         })))
       }
     )
@@ -345,6 +348,12 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
         chi_openllc_opt.get.io.sn.connect(memLogger.io.up)
         chi_llcBridge_opt.get.module.io.chi.connect(memLogger.io.down)
         chi_openllc_opt.get.io.nodeID := (NumCores * 2).U
+        chi_openllc_opt.foreach { l3 =>
+          l3.io.debugTopDown.robHeadPaddr := core_with_l2.map(_.module.io.debugTopDown.robHeadPaddr)
+        }
+        core_with_l2.zip(chi_openllc_opt.get.io.debugTopDown.addrMatch).foreach { case (tile, l3Match) =>
+          tile.module.io.debugTopDown.l3MissMatch := l3Match
+        }
       }
     }
 
@@ -370,17 +379,22 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
         }
         l3.module.io.debugTopDown.robHeadPaddr := core_with_l2.map(_.module.io.debugTopDown.robHeadPaddr)
         core_with_l2.zip(l3.module.io.debugTopDown.addrMatch).foreach { case (tile, l3Match) => tile.module.io.debugTopDown.l3MissMatch := l3Match }
-      case None => core_with_l2.foreach(_.module.io.debugTopDown.l3MissMatch := false.B)
+      case None =>
     }
 
-    core_with_l2.foreach { case tile =>
+    (chi_openllc_opt, l3cacheOpt) match {
+      case (None, None) => core_with_l2.foreach(_.module.io.debugTopDown.l3MissMatch := false.B)
+      case _ =>
+    }
+
+    core_with_l2.zipWithIndex.foreach { case (tile, i) =>
       tile.module.io.nodeID.foreach { case nodeID =>
-        nodeID := DontCare
+        nodeID := i.U
         dontTouch(nodeID)
       }
     }
 
-    misc.module.debug_module_io.resetCtrl.hartIsInReset := core_with_l2.map(_.module.reset.asBool)
+    misc.module.debug_module_io.resetCtrl.hartIsInReset := core_with_l2.map(_.module.io.hartIsInReset)
     misc.module.debug_module_io.clock := io.clock
     misc.module.debug_module_io.reset := reset_sync
 
@@ -400,8 +414,14 @@ class XSTop()(implicit p: Parameters) extends BaseXSSoc() with HasSoCParameter
     withClockAndReset(io.clock.asClock, reset_sync) {
       // Modules are reset one by one
       // reset ----> SYNC --> {SoCMisc, L3 Cache, Cores}
-      val resetChain = Seq(Seq(misc.module) ++ l3cacheOpt.map(_.module) ++ core_with_l2.map(_.module))
+      val resetChain = Seq(Seq(misc.module) ++ l3cacheOpt.map(_.module))
       ResetGen(resetChain, reset_sync, !debugOpts.ResetGen)
+      // Ensure that cores could be reset when DM disable `hartReset` or l3cacheOpt.isEmpty.
+      val dmResetReqVec = misc.module.debug_module_io.resetCtrl.hartResetReq.getOrElse(0.U.asTypeOf(Vec(core_with_l2.map(_.module).length, Bool())))
+      val syncResetCores = if(l3cacheOpt.nonEmpty) l3cacheOpt.map(_.module).get.reset.asBool else misc.module.reset.asBool
+      (core_with_l2.map(_.module)).zip(dmResetReqVec).map { case(core, dmResetReq) =>
+        ResetGen(Seq(Seq(core)), (syncResetCores || dmResetReq).asAsyncReset, !debugOpts.ResetGen)
+      }
     }
 
   }

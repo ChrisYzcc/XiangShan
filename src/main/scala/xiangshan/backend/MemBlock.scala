@@ -225,9 +225,22 @@ class ICacheBuffer()(implicit p: Parameters) extends LazyModule {
   }
 }
 
+class ICacheCtrlBuffer()(implicit p: Parameters) extends LazyModule {
+  val node = new TLBufferNode(BufferParams.default, BufferParams.default, BufferParams.default, BufferParams.default, BufferParams.default)
+  lazy val module = new ICacheCtrlBufferImpl
+
+  class ICacheCtrlBufferImpl extends LazyModuleImp(this) {
+    (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
+      out.a <> BufferParams.default(BufferParams.default(in.a))
+      in.d <> BufferParams.default(BufferParams.default(out.d))
+    }
+  }
+}
+
 // Frontend bus goes through MemBlock
 class FrontendBridge()(implicit p: Parameters) extends LazyModule {
   val icache_node = LazyModule(new ICacheBuffer()).suggestName("icache").node// to keep IO port name
+  val icachectrl_node = LazyModule(new ICacheCtrlBuffer()).suggestName("icachectrl").node
   val instr_uncache_node = LazyModule(new InstrUncacheBuffer()).suggestName("instr_uncache").node
   lazy val module = new LazyModuleImp(this) {
   }
@@ -1496,6 +1509,8 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
     vlSplit(i).io.in.valid := io.ooo_to_mem.issueVldu(i).valid &&
                               vLoadCanAccept(i) && !isSegment && !isFixVlUop(i)
     vlSplit(i).io.toMergeBuffer <> vlMergeBuffer.io.fromSplit(i)
+    vlSplit(i).io.threshold.get.valid := vlMergeBuffer.io.toSplit.get.threshold
+    vlSplit(i).io.threshold.get.bits  := lsq.io.lqDeqPtr
     NewPipelineConnect(
       vlSplit(i).io.out, loadUnits(i).io.vecldin, loadUnits(i).io.vecldin.fire,
       Mux(vlSplit(i).io.out.fire, vlSplit(i).io.out.bits.uop.robIdx.needFlush(io.redirect), loadUnits(i).io.vecldin.bits.uop.robIdx.needFlush(io.redirect)),

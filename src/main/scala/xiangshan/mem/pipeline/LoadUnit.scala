@@ -292,7 +292,8 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   // src 9: load try pointchaising when no issued or replayed load (io.fastpath)
   // src10: hardware prefetch from prefetchor (high confidence) (io.prefetch)
   // priority: high to low
-  val s0_rep_stall           = io.ldin.valid && isAfter(io.replay.bits.uop.robIdx, io.ldin.bits.uop.robIdx)
+  val s0_rep_stall           = io.ldin.valid && isAfter(io.replay.bits.uop.lqIdx, io.ldin.bits.uop.lqIdx) ||
+                               io.vecldin.valid && isAfter(io.replay.bits.uop.lqIdx, io.vecldin.bits.uop.lqIdx)
   private val SRC_NUM = 11
   private val Seq(
     mab_idx, super_rep_idx, fast_rep_idx, mmio_idx, nc_idx, lsq_rep_idx,
@@ -1265,11 +1266,10 @@ class LoadUnit(implicit p: Parameters) extends XSModule
                            !s2_dcache_miss &&
                            !s2_bank_conflict &&
                            !s2_wpu_pred_fail &&
-                           !s2_rar_nack &&
-                           !s2_raw_nack &&
                            s2_nuke
 
-  val s2_fast_rep = !s2_mem_amb &&
+  val s2_fast_rep = !s2_in.isFastReplay &&
+                    !s2_mem_amb &&
                     !s2_tlb_miss &&
                     !s2_fwd_fail &&
                     (s2_dcache_fast_rep || s2_nuke_fast_rep) &&
@@ -1281,6 +1281,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
                      !s2_tlb_miss &&
                      !s2_fwd_fail &&
                      !s2_frm_mabuf &&
+                     !s2_fast_rep &&
                      s2_troublem
 
   val s2_data_fwded = s2_dcache_miss && s2_full_fwd
@@ -1506,10 +1507,6 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   // forwrad last beat
   val s3_fast_rep_canceled = io.replay.valid && io.replay.bits.forward_tlDchannel || io.misalign_ldin.valid || !io.dcache.req.ready
 
-  // s3 load fast replay
-  io.fast_rep_out.valid := s3_valid && s3_fast_rep && !s3_in.uop.robIdx.needFlush(io.redirect)
-  io.fast_rep_out.bits := s3_in
-
   val s3_can_enter_lsq_valid = s3_valid && (!s3_fast_rep || s3_fast_rep_canceled) && !s3_in.feedbacked && !s3_nc_with_data && !s3_in.misalignNeedWakeUp
   io.lsq.ldin.valid := s3_can_enter_lsq_valid
   // TODO: check this --by hx
@@ -1531,7 +1528,6 @@ class LoadUnit(implicit p: Parameters) extends XSModule
 
   io.s3_dly_ld_err := false.B // s3_dly_ld_err && s3_valid
   io.lsq.ldin.bits.dcacheRequireReplay  := s3_dcache_rep
-  io.fast_rep_out.bits.delayedLoadError := s3_hw_err
 
   val s3_vp_match_fail = GatedValidRegNext(s2_fwd_vp_match_invalid) && s3_troublem
   val s3_rep_frm_fetch = s3_vp_match_fail
@@ -1758,6 +1754,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   )
 
   XSError(s3_valid && s3_in.misalignNeedWakeUp && !s3_frm_mabuf, "Only the needwakeup from the misalignbuffer may be high")
+  XSError(s3_valid && s3_vecout.isvec && s3_in.vecActive && !s3_vecout.mask.orR, "In vecActive, mask complement should not be 0")
   // TODO: check this --hx
   // io.ldout.valid       := s3_out.valid && !s3_out.bits.uop.robIdx.needFlush(io.redirect) && !s3_vecout.isvec ||
   //   io.lsq.uncache.valid && !io.lsq.uncache.bits.uop.robIdx.needFlush(io.redirect) && !s3_out.valid && !io.lsq.uncache.bits.isVls
@@ -1785,6 +1782,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   io.vecldout.bits.elemIdx := s3_vecout.elemIdx
   io.vecldout.bits.elemIdxInsideVd.get := s3_vecout.elemIdxInsideVd
   io.vecldout.bits.mask := s3_vecout.mask
+  io.vecldout.bits.hasException := s3_exception
   io.vecldout.bits.reg_offset.get := s3_vecout.reg_offset
   io.vecldout.bits.usSecondInv := s3_usSecondInv
   io.vecldout.bits.mBIndex := s3_vec_mBIndex

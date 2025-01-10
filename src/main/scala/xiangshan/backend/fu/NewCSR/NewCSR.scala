@@ -272,7 +272,8 @@ class NewCSR(implicit val p: Parameters) extends Module
   val PRVM = RegInit(PrivMode(1, 0), PrivMode.M)
   val V = RegInit(VirtMode(0), VirtMode.Off)
   val debugMode = RegInit(false.B)
-
+  private val nextV = WireInit(VirtMode(0), VirtMode.Off)
+  V := nextV
   // dcsr stopcount 
   val debugModeStopCountNext = debugMode && dcsr.regOut.STOPCOUNT
   val debugModeStopTimeNext  = debugMode && dcsr.regOut.STOPTIME
@@ -649,6 +650,7 @@ class NewCSR(implicit val p: Parameters) extends Module
         m.mHPM.instret := minstret.rdata
         // VS-Mode or VU-Mode
         m.v := privState.isVirtual
+        m.nextV := nextV.isOneOf(VirtMode.On)
         m.htimedelta := htimedelta.rdata
         m.mHPM.hpmcounters.zip(mhpmcounters).map{
           case(counter, mcounter) => counter := mcounter.rdata
@@ -836,7 +838,7 @@ class NewCSR(implicit val p: Parameters) extends Module
     }
   )
 
-  V := MuxCase(
+  nextV := MuxCase(
     V,
     events.filter(_.out.isInstanceOf[EventUpdatePrivStateOutput]).map {
       x => x.out match {
@@ -1222,8 +1224,6 @@ class NewCSR(implicit val p: Parameters) extends Module
   io.status.custom.l1D_pf_active_stride    := spfctl.regOut.L1D_PF_ACTIVE_STRIDE.asUInt
   io.status.custom.l1D_pf_enable_stride    := spfctl.regOut.L1D_PF_ENABLE_STRIDE.asBool
   io.status.custom.l2_pf_store_only        := spfctl.regOut.L2_PF_STORE_ONLY.asBool
-
-  io.status.custom.icache_parity_enable    := sfetchctl.regOut.ICACHE_PARITY_ENABLE.asBool
 
   io.status.custom.lvpred_disable          := slvpredctl.regOut.LVPRED_DISABLE.asBool
   io.status.custom.no_spec_load            := slvpredctl.regOut.NO_SPEC_LOAD.asBool

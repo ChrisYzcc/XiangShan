@@ -118,6 +118,7 @@ class MinimalConfig(n: Int = 1) extends Config(
           tagECC = Some("parity"),
           dataECC = Some("parity"),
           replacer = Some("setplru"),
+          cacheCtrlAddressOpt = Some(AddressSet(0x38022080, 0x7f)),
         ),
         dcacheParametersOpt = Some(DCacheParameters(
           nSets = 64, // 32KB DCache
@@ -361,7 +362,9 @@ class WithNKBL3(n: Int, ways: Int = 8, inclusive: Boolean = true, banks: Int = 1
         clientCaches = tiles.map { core =>
           val l2params = core.L2CacheParamsOpt.get
           l2params.copy(sets = 2 * clientDirBytes / core.L2NBanks / l2params.ways / 64, ways = l2params.ways + 2)
-        }
+        },
+        enablePerf = !site(DebugOptionsKey).FPGAPlatform && site(DebugOptionsKey).EnablePerfDebug,
+        elaboratedTopDown = !site(DebugOptionsKey).FPGAPlatform
       ))
     )
 })

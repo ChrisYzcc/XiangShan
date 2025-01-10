@@ -151,7 +151,11 @@ trait Unprivileged { self: NewCSR with MachineLevel with SupervisorLevel =>
     val stimeTmp  = mHPM.time.bits
     val vstimeTmp = mHPM.time.bits + htimedelta
 
-    when(mHPM.time.valid && !debugModeStopTime) {
+    // Update when rtc clock tick and not dcsr.STOPTIME
+    // or virtual mode changed
+    // Note: we delay a cycle and use `v` for better timing
+    val virtModeChanged = RegNext(nextV =/= v, false.B)
+    when(mHPM.time.valid && !debugModeStopTime || virtModeChanged) {
       reg.time := Mux(v, vstimeTmp, stimeTmp)
     }.otherwise {
       reg := reg
@@ -268,6 +272,7 @@ trait HasMHPMSink { self: CSRModule[_] =>
     val hpmcounters = Vec(perfCntNum, UInt(XLEN.W))
   }))
   val v = IO(Input(Bool()))
+  val nextV = IO(Input(Bool()))
   val htimedelta = IO(Input(UInt(64.W)))
 }
 

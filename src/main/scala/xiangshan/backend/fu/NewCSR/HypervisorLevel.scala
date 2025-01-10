@@ -23,7 +23,15 @@ trait HypervisorLevel { self: NewCSR =>
   val hedeleg = Module(new CSRModule("Hedeleg", new HedelegBundle))
     .setAddr(CSRs.hedeleg)
 
-  val hideleg = Module(new CSRModule("Hideleg", new HidelegBundle))
+  val hideleg = Module(new CSRModule("Hideleg", new HidelegBundle)
+    with HasIpIeBundle
+  {
+    regOut := reg & mideleg
+    regOut.getLocal.zip(reg.getLocal).zip(mideleg.getLocal).zip(mvien.getLocal).foreach {
+      case (((regOutLCI, regLCI), midelegLCI), mvienLCI) =>
+        regOutLCI := regLCI && (midelegLCI || mvienLCI)
+    }
+  })
     .setAddr(CSRs.hideleg)
 
   val hie = Module(new CSRModule("Hie", new HieBundle)
@@ -46,7 +54,7 @@ trait HypervisorLevel { self: NewCSR =>
   })
     .setAddr(CSRs.hie)
 
-  val htimedelta = Module(new CSRModule("Htimedelta"))
+  val htimedelta = Module(new CSRModule("Htimedelta", new Htimedelta))
     .setAddr(CSRs.htimedelta)
 
   val hcounteren = Module(new CSRModule("Hcounteren", new Counteren))
@@ -340,6 +348,8 @@ class HEnvCfg extends EnvCfg {
     this.DTE.setRW().withReset(0.U)
   }
 }
+
+class Htimedelta extends FieldInitBundle
 
 trait HypervisorBundle { self: CSRModule[_] =>
   val hstatus = IO(Input(new HstatusBundle))

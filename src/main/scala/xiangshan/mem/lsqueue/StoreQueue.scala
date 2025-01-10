@@ -378,7 +378,9 @@ class StoreQueue(implicit p: Parameters) extends XSModule
     val selectUpBound = ParallelPriorityMux(entryCanEnqSeq, enqUpBound)
     when (entryCanEnq) {
       uop(i) := selectBits
-      vecLastFlow(i) := Mux((i + 1).U === selectUpBound.value, selectBits.lastUop, false.B)
+      if (i + 1 == StoreQueueSize)
+        vecLastFlow(i) := Mux(0.U === selectUpBound.value, selectBits.lastUop, false.B) else
+        vecLastFlow(i) := Mux((i + 1).U === selectUpBound.value, selectBits.lastUop, false.B)
       allocated(i) := true.B
       datavalid(i) := false.B
       addrvalid(i) := false.B
@@ -1373,8 +1375,7 @@ class StoreQueue(implicit p: Parameters) extends XSModule
   // misprediction recovery / exception redirect
   // invalidate sq term using robIdx
   for (i <- 0 until StoreQueueSize) {
-    needCancel(i) := uop(i).robIdx.needFlush(io.brqRedirect) && allocated(i) && !committed(i) &&
-      (!isVec(i) || !(uop(i).robIdx === io.brqRedirect.bits.robIdx))
+    needCancel(i) := uop(i).robIdx.needFlush(io.brqRedirect) && allocated(i) && !committed(i)
     when (needCancel(i)) {
       allocated(i) := false.B
     }
@@ -1386,8 +1387,8 @@ class StoreQueue(implicit p: Parameters) extends XSModule
   val enqCancelValid = canEnqueue.zip(io.enq.req).map{case (v , x) =>
     v && x.bits.robIdx.needFlush(io.brqRedirect)
   }
-  val enqCancelNum = enqCancelValid.zip(io.enq.req).map{case (v, req) =>
-    Mux(v, req.bits.numLsElem, 0.U)
+  val enqCancelNum = enqCancelValid.zip(vStoreFlow).map{case (v, flow) =>
+    Mux(v, flow, 0.U)
   }
   val lastEnqCancel = RegEnable(enqCancelNum.reduce(_ + _), io.brqRedirect.valid) // 1 cycle after redirect
 
