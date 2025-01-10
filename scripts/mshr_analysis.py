@@ -27,28 +27,16 @@ class MSHRData:
     def __str__(self):
         return "Unalloc: " + str(self.unalloc) + ", Prefetch: " + str(self.prefetch) + ", Mixed: " + str(self.mixed) + ", Other: " + str(self.other)
 
-db_path_list = ["./build/2025-01-07@13:52:41.db"]
+db_path_list = ["./build/2025-01-10@11:46:51.db"]
 
 # Process each database
 for path in db_path_list:
     conn = sqlite3.connect(path)
     c = conn.cursor()
 
-    mshr_datas = {}
-    # Get the data
-    for i in range(0, 15):
-        raw_data = c.execute("SELECT * FROM " + "mshrStateTable" + str(i) + ";").fetchall()
-
-        for data in raw_data:
-            timestamp = data[2]
-
-            if timestamp not in mshr_datas:
-                mshr_datas[timestamp] = MSHRData()
-            
-            mshr_datas[timestamp].__inc__(data[1])
-
-    for key in mshr_datas:
-        print("Timestamp: " + str(key) + ", " + mshr_datas[key].__str__())
+    c.execute("SELEct * FROM MSHRStateTable")
+    rows = c.fetchall()
+    print(rows)
 
     # Close the connection
     c.close()

@@ -414,6 +414,8 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
     }
     val nMaxPrefetchEntry = Input(UInt(64.W))
     val matched = Output(Bool())
+
+    val mshr_state = Output(UInt(2.W))
   })
 
   assert(!RegNext(io.primary_valid && !io.primary_ready))
@@ -937,17 +939,7 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
      }
    }
 
-   val EntryStateTable = ChiselDB.createTable(s"mshrStateTable$index", new MSHRStateEntry)
-   val mshrState = Wire(new MSHRStateEntry)
-   mshrState.timeCnt := GTimer()
-   mshrState.state := state
-   EntryStateTable.log(
-     data = mshrState,
-     en = (GTimer()(5, 0) === 32.U),
-     site = "miss_entry_" + index.toString,
-     clock = clock,
-     reset = reset
-   )
+   io.mshr_state := state
  }
 
 class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DCacheModule 
@@ -1032,6 +1024,40 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
   val reject = ParallelORR(Cat(secondary_reject_vec ++ Seq(miss_req_pipe_reg.reject_req(io.req.bits))))
   val alloc = !reject && !merge && ParallelORR(Cat(primary_ready_vec))
   val accept = alloc || merge
+
+  // collect block info
+  val mshr_state_vec = Wire(Vec(cfg.nMissEntries, UInt(2.W)))
+  for (i <- 0 until cfg.nMissEntries){
+    mshr_state_vec(i) := entries(i).io.mshr_state
+  }
+  val mshr_unalloc_cnt = mshr_state_vec.count(_ === 0.U)
+  val mshr_prefetch_cnt = mshr_state_vec.count(_ === 1.U)
+  val mshr_mixed_cnt = mshr_state_vec.count(_ === 2.U)
+  val mshr_other_cnt = mshr_state_vec.count(_ === 3.U)
+
+  val mshr_state_table = ChiselDB.createTable(
+    "MSHRStateTable",
+    new MSHRStateEntry,
+    true
+  )
+
+  val mshr_state_entry = Wire(new MSHRStateEntry)
+  mshr_state_entry.unalloc_cnt  := mshr_unalloc_cnt
+  mshr_state_entry.prefetch_cnt := mshr_prefetch_cnt
+  mshr_state_entry.mixed_cnt  := mshr_mixed_cnt
+  mshr_state_entry.other_cnt  := mshr_other_cnt
+
+  mshr_state_table.log(
+    data = mshr_state_entry,
+    en = ~accept && io.req.valid && ~io.req.bits.cancel,
+    site = "MissQueue" + io.hartId.toString(),
+    clock = clock,
+    reset = reset
+  )
+  XSPerfAccumulate(
+    "missQueueBlock",
+    ~accept && io.req.valid && ~io.req.bits.cancel
+  )
 
   // generate req_ready for each miss request for better timing
   for (i <- 0 until reqNum) {

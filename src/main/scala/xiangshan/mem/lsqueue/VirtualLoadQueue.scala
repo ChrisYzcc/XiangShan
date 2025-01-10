@@ -73,7 +73,6 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val LoadLatencyTable = ChiselDB.createTable(
     "LoadLatencyTable" + p(XSCoreParamsKey).HartId.toString,
     new LoadDelayEntry,
-    true
   )
 
   /**

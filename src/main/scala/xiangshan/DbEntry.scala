@@ -10,8 +10,10 @@ import utility.MemReqSource
 import xiangshan.mem.prefetch.HasL1PrefetchHelper
 
 class MSHRStateEntry(implicit p: Parameters) extends XSBundle{
-  val timeCnt = UInt(XLEN.W)
-  val state = UInt(2.W)
+  val unalloc_cnt = UInt(XLEN.W)
+  val prefetch_cnt = UInt(XLEN.W)
+  val mixed_cnt = UInt(XLEN.W)
+  val other_cnt = UInt(XLEN.W)
 }
 
 class LoadDelayEntry(implicit p: Parameters) extends XSBundle{
