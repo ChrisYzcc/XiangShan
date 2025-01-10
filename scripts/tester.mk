@@ -8,7 +8,7 @@ CONFIG = KunminghuV2Config
 $(EMU):
 	NOOP_HOME=$(shell pwd) \
 	NEMU_HOME=$(shell pwd) \
-	make emu -j9 EMU_THREADS=8 EMU_TRACE=1 CONFIG=$(CONFIG) | tee compile.log
+	make emu -j9 EMU_THREADS=16 EMU_TRACE=1 CONFIG=$(CONFIG) | tee compile.log
 
 gen: $(EMU)
 
@@ -16,7 +16,7 @@ gen_dram:
 	NOOP_HOME=$(shell pwd) \
     NEMU_HOME=$(shell pwd) \
     DRAMSIM3_HOME=$(NOOP_HOME)/../DRAMsim3 \
-    make emu -j200 EMU_THREADS=8 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
+    make emu -j200 EMU_THREADS=16 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
 
 WORKLOAD ?= microbench
 WORKLOAD_PATH ?=
@@ -55,4 +55,4 @@ XS_PATH = $(NOOP_HOME)
 simpoint:
 	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
 	-@rm -rf $(NOOP_HOME)/rpt/dcache_mshr-*.log
-	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume --cache-monitor
+	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume
