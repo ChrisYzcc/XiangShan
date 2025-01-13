@@ -2,7 +2,7 @@
 
 import sqlite3
 
-db_path_list = ["./build/2025-01-09@15:53:08.db"]
+db_path_list = ["./build/2025-01-09@18:18:48.db"]
 
 latencies = []
 for path in db_path_list:
