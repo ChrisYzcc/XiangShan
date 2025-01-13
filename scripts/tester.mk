@@ -54,5 +54,4 @@ XS_PATH = $(NOOP_HOME)
 
 simpoint:
 	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
-	-@rm -rf $(NOOP_HOME)/rpt/dcache_mshr-*.log
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume

@@ -225,12 +225,13 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
       load_delay_entry.delay := timer_vec((deqPtr + i.U).value)
       LoadLatencyTable.log(
         data = load_delay_entry,
-        en = commitCount > i.U,
+        en = commitCount > i.U && ~debug_mmio((deqPtr + i.U).value),
         site = "virtualQueue",
         clock = clock,
         reset = reset
       )
     }
+    XSPerfAccumulate(i.toString +  "offchip_load", timer_vec((deqPtr + i.U).value) > 400.U && commitCount > i.U && ~debug_mmio((deqPtr + i.U).value))
     XSError(commitCount > i.U && !allocated((deqPtr+i.U).value), s"why commit invalid entry $i?\n")
   })
 
