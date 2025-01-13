@@ -37,7 +37,7 @@ endif
 run: $(EMU)
 	-@mkdir rpt
 	-@rm $(NOOP_HOME)/rpt/*.txt
-	$(EMU) -i $(WORKLOAD_PATH) --dump-db --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
+	$(EMU) -i $(WORKLOAD_PATH) --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
 # Performance
 PERF_CSV = ./rpt/stats.csv
@@ -55,3 +55,4 @@ XS_PATH = $(NOOP_HOME)
 simpoint:
 	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume
+	echo "SimPoint analysis done."
