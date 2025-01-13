@@ -1904,6 +1904,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   XSPerfAccumulate("s2_fwd_frm_d_chan_or_mshr",    s2_valid && s2_fwd_frm_d_chan_or_mshr)
   XSPerfAccumulate("s2_stall_out",                 s2_fire && !s2_can_go)
   XSPerfAccumulate("s2_prefetch",                  s2_fire && s2_prf)
+  XSPerfAccumulate("s2_prefetch_conflict",         s2_fire && s2_prf && s2_bank_conflict)
   XSPerfAccumulate("s2_prefetch_ignored",          s2_fire && s2_prf && io.dcache.s2_mq_nack) // ignore prefetch for mshr full / miss req port conflict
   XSPerfAccumulate("s2_prefetch_miss",             s2_fire && s2_prf && io.dcache.resp.bits.miss) // prefetch req miss in l1
   XSPerfAccumulate("s2_prefetch_hit",              s2_fire && s2_prf && !io.dcache.resp.bits.miss) // prefetch req hit in l1
