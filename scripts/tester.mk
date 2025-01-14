@@ -15,7 +15,7 @@ gen: $(EMU)
 gen_dram:
 	NOOP_HOME=$(shell pwd) \
     NEMU_HOME=$(shell pwd) \
-    DRAMSIM3_HOME=$(NOOP_HOME)/../DRAMsim3 \
+    DRAMSIM3_HOME=~/DRAMsim3 \
     make emu -j200 EMU_THREADS=16 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
 
 WORKLOAD ?= microbench
@@ -39,20 +39,15 @@ run: $(EMU)
 	-@rm $(NOOP_HOME)/rpt/*.txt
 	$(EMU) -i $(WORKLOAD_PATH) --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
-# Performance
-PERF_CSV = ./rpt/stats.csv
-perf:
-	-@mkdir rpt
-#	$(PYTHON) ./scripts/perf.py $(SIM_ERR) -o $(PERF_CSV)
-	$(PYTHON) ./scripts/mshr_analysis.py
-
 # SimPoint
-PERF_PATH = $(NOOP_HOME)/../env-scripts/perf
+PERF_PATH = ~/env-scripts/perf
 GCPT_PATH = /nfs/home/share/liyanqin/spec06_rv64gcb_O3_20m_gcc12.2.0-intFpcOff-jeMalloc/checkpoint-0-0-0
-JSON_PATH = $(NOOP_HOME)/scripts/simpoint_summary.json
+#JSON_PATH = $(NOOP_HOME)/scripts/simpoint_summary.json
+JSON_PATH = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeMalloc-0.3.json
+SERVER_LIST = open06 open07 open08 open09 open10 open12 open13 open14 open15
 XS_PATH = $(NOOP_HOME)
 
 simpoint:
 	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
-	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume
-	echo "SimPoint analysis done."
+	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume -L "$(SERVER_LIST)"
+	-@echo "SimPoint analysis done."
