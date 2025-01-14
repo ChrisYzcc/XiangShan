@@ -48,6 +48,5 @@ SERVER_LIST = open06 open07 open08 open09 open10 open12 open13 open14 open15
 XS_PATH = $(NOOP_HOME)
 
 simpoint:
-	-@rm -rf $(NOOP_HOME)/SPEC06_EmuTasks/
-	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir SPEC06_EmuTasks --resume -L "$(SERVER_LIST)"
+	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir ~/offchip-with-prefetch --resume -L "$(SERVER_LIST)"
 	-@echo "SimPoint analysis done."
