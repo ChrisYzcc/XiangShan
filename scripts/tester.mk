@@ -47,6 +47,8 @@ JSON_PATH = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeM
 SERVER_LIST = open06 open07 open08 open09 open10 open12 open13 open14 open15
 XS_PATH = $(NOOP_HOME)
 
+SIMPOPINT_RESDIR = ~/offchip-with-prefetch
 simpoint:
-	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir ~/offchip-with-prefetch --resume -L "$(SERVER_LIST)"
+	-@rm -rf $(SIMPOPINT_RESDIR)
+	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH) --xs $(XS_PATH) --threads 16 --dir $(SIMPOPINT_RESDIR) --resume -L "$(SERVER_LIST)"
 	-@echo "SimPoint analysis done."
