@@ -1062,6 +1062,40 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
     "missQueueBlockAndHavePrefetched",
     ~accept && io.req.valid && ~io.req.bits.cancel && mshr_prefetch_cnt > 0.U
   )
+  XSPerfAccumulate(
+    "missQueuePrefetchBlocked",
+    ~accept && io.req.valid && ~io.req.bits.cancel && io.req.bits.isFromPrefetch
+  )
+
+  val isfrompf = io.req.bits.isFromPrefetch
+  dontTouch(isfrompf)
+
+  XSPerfRolling(
+    perfName = "pf_block_MSHR_other_num",
+    perfCnt = mshr_other_cnt,
+    eventTrigger = ~accept && io.req.valid && ~io.req.bits.cancel && io.req.bits.isFromPrefetch,
+    granularity = 1,
+    clock = clock,
+    reset = reset
+  )
+
+  XSPerfRolling(
+    perfName = "pf_block_MSHR_unalloc_num",
+    perfCnt = mshr_unalloc_cnt,
+    eventTrigger = ~accept && io.req.valid && ~io.req.bits.cancel && io.req.bits.isFromPrefetch,
+    granularity = 1,
+    clock = clock,
+    reset = reset
+  )
+
+  XSPerfRolling(
+    perfName = "pf_block_MSHR_mixed_num",
+    perfCnt = mshr_mixed_cnt,
+    eventTrigger = ~accept && io.req.valid && ~io.req.bits.cancel && io.req.bits.isFromPrefetch,
+    granularity = 1,
+    clock = clock,
+    reset = reset
+  )
 
   // generate req_ready for each miss request for better timing
   for (i <- 0 until reqNum) {
