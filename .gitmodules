@@ -21,10 +21,12 @@
 	url = https://github.com/OpenXiangShan/YunSuan.git
 [submodule "coupledL2"]
 	path = coupledL2
-	url = https://github.com/OpenXiangShan/coupledL2
+	url = https://github.com/ChrisYzcc/CoupledL2.git
+	branch = feat-llc-prefetch
 [submodule "openLLC"]
 	path = openLLC
-	url = https://github.com/OpenXiangShan/OpenLLC.git
+	url = https://github.com/ChrisYzcc/OpenLLC.git
+	branch = feat-llc-prefetch
 [submodule "src/main/resources/aia"]
 	path = src/main/resources/aia
 	url = https://github.com/OpenXiangShan/OpenAIA.git
