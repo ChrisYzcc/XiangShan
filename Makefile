@@ -276,5 +276,6 @@ pldm-debug:
 include Makefile.test
 
 include src/main/scala/device/standalone/standalone_device.mk
+include scripts/tester.mk
 
 .PHONY: verilog sim-verilog emu clean help init bump bsp $(REF_SO)
