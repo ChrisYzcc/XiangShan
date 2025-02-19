@@ -231,7 +231,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
         reset = reset
       )
     }
-    XSPerfAccumulate(i.toString +  "offchip_load", timer_vec((deqPtr + i.U).value) > 400.U && commitCount > i.U && ~debug_mmio((deqPtr + i.U).value))
+    //XSPerfAccumulate(i.toString +  "offchip_load", timer_vec((deqPtr + i.U).value) > 400.U && commitCount > i.U && ~debug_mmio((deqPtr + i.U).value))
     XSError(commitCount > i.U && !allocated((deqPtr+i.U).value), s"why commit invalid entry $i?\n")
   })
 

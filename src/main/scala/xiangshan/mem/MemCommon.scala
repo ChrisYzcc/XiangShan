@@ -478,10 +478,12 @@ class LoadDataFromDcacheBundle(implicit p: Parameters) extends DCacheBundle {
   // forward tilelink D channel
   val forward_D = Bool()
   val forwardData_D = Vec(VLEN/8, UInt(8.W))
+  val offchip_D = Bool()
 
   // forward mshr data
   val forward_mshr = Bool()
   val forwardData_mshr = Vec(VLEN/8, UInt(8.W))
+  val offchip_mshr = Bool()
 
   val forward_result_valid = Bool()
 
@@ -499,6 +501,12 @@ class LoadDataFromDcacheBundle(implicit p: Parameters) extends DCacheBundle {
       ),
       dcache_data
     )
+  }
+
+  def isOffchip(): Bool = {
+    val use_D = forward_D && forward_result_valid
+    val use_mshr = forward_mshr && forward_result_valid
+    use_D && offchip_D || use_mshr && offchip_mshr
   }
 
   def mergeLsqFwdData(dcacheData: UInt): UInt = {

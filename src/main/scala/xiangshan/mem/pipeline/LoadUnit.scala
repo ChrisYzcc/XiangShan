@@ -1195,6 +1195,8 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   val s2_mis_align = s2_valid && GatedValidRegNext(io.csrCtrl.hd_misalign_ld_enable) &&
                      s2_out.isMisalign && !s2_in.misalignWith16Byte && !s2_exception_vec(breakPoint) && !s2_trigger_debug_mode && !s2_check_mmio
   val (s2_fwd_frm_d_chan, s2_fwd_data_frm_d_chan, s2_d_corrupt) = io.tl_d_channel.forward(s1_valid && s1_out.forward_tlDchannel, s1_out.mshrid, s1_out.paddr)
+  val s2_fwd_d_chan_offchip = io.tl_d_channel.is_offchip
+  val s2_fwd_mshr_offchip = io.forward_mshr.is_offchip
   val (s2_fwd_data_valid, s2_fwd_frm_mshr, s2_fwd_data_frm_mshr, s2_mshr_corrupt) = io.forward_mshr.forward()
   val s2_fwd_frm_d_chan_or_mshr = s2_fwd_data_valid && (s2_fwd_frm_d_chan || s2_fwd_frm_mshr)
 
@@ -1684,9 +1686,15 @@ class LoadUnit(implicit p: Parameters) extends XSModule
   s2_ld_raw_data_frm_pipe.uop                  := s2_out.uop
   s2_ld_raw_data_frm_pipe.addrOffset           := s2_out.paddr(3, 0)
 
+  s2_ld_raw_data_frm_pipe.offchip_D            := s2_fwd_d_chan_offchip
+  s2_ld_raw_data_frm_pipe.offchip_mshr         := s2_fwd_mshr_offchip
+
   val s2_ld_raw_data_frm_tlD = s2_ld_raw_data_frm_pipe.mergeTLData()
   val s2_merged_data_frm_pipe = s2_ld_raw_data_frm_pipe.mergeLsqFwdData(s2_ld_raw_data_frm_tlD)
   val s3_merged_data_frm_pipe = RegEnable(s2_merged_data_frm_pipe, s2_fire)
+
+  val s2_offchip = s2_ld_raw_data_frm_pipe.isOffchip()
+  val s3_offchip = RegEnable(s2_offchip, s2_fire)
 
   // duplicate reg for ldout and vecldout
   private val LdDataDup = 3
@@ -1737,6 +1745,8 @@ class LoadUnit(implicit p: Parameters) extends XSModule
                                   FuType.vldu.U,
                                   FuType.ldu.U
   )
+
+  XSPerfAccumulate("offchip_load", s3_valid && s3_ldout_valid && s3_offchip)
 
   XSError(s3_valid && s3_in.misalignNeedWakeUp && !s3_frm_mabuf, "Only the needwakeup from the misalignbuffer may be high")
   XSError(s3_valid && s3_vecout.isvec && s3_in.vecActive && !s3_vecout.mask.orR, "In vecActive, mask complement should not be 0")
