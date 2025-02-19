@@ -16,7 +16,7 @@ gen_dram:
 	NOOP_HOME=$(shell pwd) \
     NEMU_HOME=$(shell pwd) \
     DRAMSIM3_HOME=~/DRAMsim3 \
-    make emu -j200 EMU_THREADS=16 EMU_TRACE=1 CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
+    make emu -j200 EMU_THREADS=16 EMU_TRACE=fst CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
 
 WORKLOAD ?= microbench
 WORKLOAD_PATH ?=
@@ -37,7 +37,7 @@ endif
 run: $(EMU)
 	-@mkdir rpt
 	-@rm $(NOOP_HOME)/rpt/*.txt
-	$(EMU) -i $(WORKLOAD_PATH) --dump-wave -b 0 -e 100000 --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
+	$(EMU) -i $(WORKLOAD_PATH) --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
 # SimPoint
 PERF_PATH = ~/env-scripts/perf
@@ -47,11 +47,11 @@ JSON_PATH_p = $(NOOP_HOME)/scripts/simpoint_summary.json
 JSON_PATH_3 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeMalloc-0.3.json
 JSON_PATH_8 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeMalloc-0.8.json
 #SERVER_LIST = open06 open07 open08 open09 open10 open12 open13 open14 open15
-SERVER_LIST = node005 node006 node007 node008 node009 node027 node028
+SERVER_LIST = node005 node006 node007 node008 node009 node027 node028 node042
 XS_PATH = $(NOOP_HOME)
 
-SIMPOPINT_RESDIR = ~/offchip-access/without-prefetch
+SIMPOPINT_RESDIR = ~/offchip-access/with-prefetch
 simpoint:
-	-@rm -rf $(SIMPOPINT_RESDIR)
+#	-@rm -rf $(SIMPOPINT_RESDIR)
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH_8) --xs $(XS_PATH) --threads 16 --dir $(SIMPOPINT_RESDIR) --resume -L "$(SERVER_LIST)"
 	-@echo "SimPoint analysis done."
