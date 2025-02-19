@@ -22,9 +22,10 @@ import chisel3.util._
 import coupledL2.VaddrField
 import coupledL2.IsKeywordField
 import coupledL2.IsKeywordKey
+import coupledL2.IsOffchipKey
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.util.BundleFieldBase
+import freechips.rocketchip.util.{BundleFieldBase, BundleKeyBase}
 import huancun.{AliasField, PrefetchField}
 import org.chipsalliance.cde.config.Parameters
 import utility._
@@ -672,6 +673,7 @@ class DcacheToLduForwardIO(implicit p: Parameters) extends DCacheBundle {
   val mshrid = UInt(log2Up(cfg.nMissEntries).W)
   val last = Bool()
   val corrupt = Bool()
+  val is_offchip = Bool()
 
   def apply(d: DecoupledIO[TLBundleD], edge: TLEdgeOut) = {
     val isKeyword = d.bits.echo.lift(IsKeywordKey).getOrElse(false.B)
@@ -681,6 +683,7 @@ class DcacheToLduForwardIO(implicit p: Parameters) extends DCacheBundle {
     mshrid := d.bits.source
     last := isKeyword ^ done
     corrupt := d.bits.corrupt || d.bits.denied
+    is_offchip := d.bits.user.lift(IsOffchipKey).getOrElse(false.B)
   }
 
   def dontCare() = {
@@ -689,6 +692,7 @@ class DcacheToLduForwardIO(implicit p: Parameters) extends DCacheBundle {
     mshrid := DontCare
     last := DontCare
     corrupt := false.B
+    is_offchip := false.B
   }
 
   def forward(req_valid : Bool, req_mshr_id : UInt, req_paddr : UInt) = {
@@ -724,6 +728,8 @@ class MissEntryForwardIO(implicit p: Parameters) extends DCacheBundle {
   val firstbeat_valid = Bool()
   val lastbeat_valid = Bool()
   val corrupt = Bool()
+
+  val is_offchip = Bool()
 
   // check if we can forward from mshr or D channel
   def check(req_valid : Bool, req_paddr : UInt) = {
@@ -765,6 +771,8 @@ class LduToMissqueueForwardIO(implicit p: Parameters) extends DCacheBundle {
   val forward_result_valid = Output(Bool())
   val corrupt = Output(Bool())
 
+  val is_offchip = Output(Bool())
+
   // Why? What is the purpose of `connect`???
   def connect(sink: LduToMissqueueForwardIO) = {
     sink.valid := valid
@@ -774,6 +782,8 @@ class LduToMissqueueForwardIO(implicit p: Parameters) extends DCacheBundle {
     forwardData := sink.forwardData
     forward_result_valid := sink.forward_result_valid
     corrupt := sink.corrupt
+
+    is_offchip := sink.is_offchip
   }
 
   def forward() = {
@@ -921,6 +931,7 @@ class DCache()(implicit p: Parameters) extends LazyModule with HasDCacheParamete
   val echoFields: Seq[BundleFieldBase] = Seq(
     IsKeywordField()
   )
+  val respKeys: Seq[BundleKeyBase] = Seq(IsOffchipKey)
 
   val clientParameters = TLMasterPortParameters.v1(
     Seq(TLMasterParameters.v1(
@@ -929,7 +940,8 @@ class DCache()(implicit p: Parameters) extends LazyModule with HasDCacheParamete
       supportsProbe = TransferSizes(cfg.blockBytes)
     )),
     requestFields = reqFields,
-    echoFields = echoFields
+    echoFields = echoFields,
+    responseKeys = respKeys
   )
 
   val clientNode = TLClientNode(Seq(clientParameters))

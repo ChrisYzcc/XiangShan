@@ -26,8 +26,7 @@ package xiangshan.cache
 import chisel3._
 import chisel3.util._
 import chisel3.experimental.dataview._
-import coupledL2.VaddrKey
-import coupledL2.IsKeywordKey
+import coupledL2.{IsKeywordKey, IsOffchipKey, VaddrKey}
 import difftest._
 import freechips.rocketchip.tilelink.ClientStates._
 import freechips.rocketchip.tilelink.MemoryOpCategories._
@@ -591,6 +590,7 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
 
   val hasData = RegInit(true.B)
   val isDirty = RegInit(false.B)
+  val isOffchip = RegInit(false.B)
   when (io.mem_grant.fire) {
     w_grantfirst := true.B
     grant_param := io.mem_grant.bits.param
@@ -626,6 +626,7 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
 
     refill_data_raw(refill_count ^ isKeyword) := io.mem_grant.bits.data
     isDirty := io.mem_grant.bits.echo.lift(DirtyKey).getOrElse(false.B)
+    isOffchip := io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B)
   }
 
   when (io.mem_finish.fire) {
@@ -844,6 +845,7 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
   io.forwardInfo.firstbeat_valid := w_grantfirst_forward_info
   io.forwardInfo.lastbeat_valid := w_grantlast_forward_info
   io.forwardInfo.corrupt := error
+  io.forwardInfo.is_offchip := isOffchip
 
   io.matched := req_valid && (get_block(req.addr) === get_block(io.req.bits.addr)) && !prefetch
   io.prefetch_info.late_prefetch := io.req.valid && !(io.req.bits.isFromPrefetch) && req_valid && (get_block(req.addr) === get_block(io.req.bits.addr)) && prefetch
@@ -904,25 +906,27 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
      state := state_nxt
    }
 
+   val real_release = release_entry && ~(io.miss_req_pipe_reg.merge && !io.miss_req_pipe_reg.cancel) && ~(io.miss_req_pipe_reg.alloc && !io.miss_req_pipe_reg.cancel)
+
    switch (state) {
      is (s_unalloc) {
-       when (RegNext(primary_fire) && io.miss_req_pipe_reg.alloc){
+       when (RegNext(primary_fire) && io.miss_req_pipe_reg.alloc && !io.miss_req_pipe_reg.cancel){
          when (io.miss_req_pipe_reg.req.isFromPrefetch){
            state_nxt := s_prefetch
          }.otherwise {
            state_nxt := s_other
          }
-       }.elsewhen (release_entry){
+       }.elsewhen (real_release){
          state_nxt := s_unalloc
        }
      }
 
      is (s_prefetch) {
-       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge){
+       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge && !io.miss_req_pipe_reg.cancel){
          when (~io.miss_req_pipe_reg.req.isFromPrefetch){
            state_nxt := s_mixed
          }
-       }.elsewhen (release_entry){
+       }.elsewhen (real_release){
          state_nxt := s_unalloc
        }
      }
@@ -934,11 +938,11 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
      }
 
      is (s_other) {
-       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge){
+       when ((RegNext(secondary_fire) || RegNext(RegNext(primary_fire))) && io.miss_req_pipe_reg.merge && !io.miss_req_pipe_reg.cancel){
          when (io.miss_req_pipe_reg.req.isFromPrefetch){
            state_nxt := s_mixed
          }
-       }.elsewhen (release_entry){
+       }.elsewhen (real_release){
          state_nxt := s_unalloc
        }
      }
@@ -955,6 +959,43 @@ class MissEntry(edge: TLEdgeOut, reqNum: Int, index: Int)(implicit p: Parameters
      clock = clock,
      reset = reset
    )
+
+   val has_load = RegInit(false.B)
+   val has_store = RegInit(false.B)
+   val has_amo = RegInit(false.B)
+   val has_pft = RegInit(false.B)
+   val has_multi_load = RegInit(false.B)
+
+   when(io.miss_req_pipe_reg.alloc && !io.miss_req_pipe_reg.cancel) {
+     has_load := io.miss_req_pipe_reg.req.isFromLoad || has_load
+     has_store := io.miss_req_pipe_reg.req.isFromStore || has_store
+     has_amo := io.miss_req_pipe_reg.req.isFromAMO || has_amo
+     has_pft := io.miss_req_pipe_reg.req.isFromPrefetch || has_pft
+   }
+
+   when(io.miss_req_pipe_reg.merge && !io.miss_req_pipe_reg.cancel) {
+     has_load := io.miss_req_pipe_reg.req.isFromLoad || has_load
+     has_multi_load := io.miss_req_pipe_reg.req.isFromLoad && has_load
+     has_store := io.miss_req_pipe_reg.req.isFromStore || has_store
+     has_amo := io.miss_req_pipe_reg.req.isFromAMO || has_amo
+     has_pft := io.miss_req_pipe_reg.req.isFromPrefetch || has_pft
+   }
+
+   when(real_release) {
+     has_load := false.B
+     has_store := false.B
+     has_amo := false.B
+     has_pft := false.B
+     has_multi_load := false.B
+   }
+
+   XSPerfAccumulate("load_offchip", io.mem_grant.fire && has_load && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("multi_load_offchip", io.mem_grant.fire && has_multi_load && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("store_offchip", io.mem_grant.fire && has_store && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("amo_offchip", io.mem_grant.fire && has_amo && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("mixed_offchip", io.mem_grant.fire && has_load && has_store && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("pft_offchip", io.mem_grant.fire && has_pft && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
+   XSPerfAccumulate("tot_offchip", io.mem_grant.fire && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
  }
 
 class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DCacheModule 
@@ -1103,6 +1144,7 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
     io.forward(i).forward_mshr := forward_mshr
     io.forward(i).forwardData := forwardData
     io.forward(i).corrupt := RegNext(forwardInfo_vec(id).corrupt)
+    io.forward(i).is_offchip := forwardInfo_vec(id).is_offchip
   })
 
   assert(RegNext(PopCount(secondary_ready_vec) <= 1.U || !io.req.valid))
@@ -1283,6 +1325,8 @@ class MissQueue(edge: TLEdgeOut, reqNum: Int)(implicit p: Parameters) extends DC
   XSPerfAccumulate("miss_store_refill_latency", PopCount(entries.map(_.io.latency_monitor.store_miss_refilling)))
   XSPerfAccumulate("miss_amo_refill_latency", PopCount(entries.map(_.io.latency_monitor.amo_miss_refilling)))
   XSPerfAccumulate("miss_pf_refill_latency", PopCount(entries.map(_.io.latency_monitor.pf_miss_refilling)))
+
+  XSPerfAccumulate("offchip_grant", io.mem_grant.fire && io.mem_grant.bits.user.lift(IsOffchipKey).getOrElse(false.B))
 
   val rob_head_miss_in_dcache = VecInit(entries.map(_.io.rob_head_query.resp)).asUInt.orR
 
