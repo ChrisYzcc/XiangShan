@@ -315,6 +315,8 @@ object Bundles {
     val forwardData_mshr = Vec(VLEN/8, UInt(8.W))
 
     val forward_result_valid = Bool()
+    val offchip_D = Bool()
+    val offchip_mshr = Bool()
 
     def mergeTLData(): UInt = {
       // merge TL D or MSHR data at load s2
@@ -338,6 +340,12 @@ object Bundles {
         Mux(forwardMask(j), forwardData(j), dcacheData(8*(j+1)-1, 8*j))
       ))
       rdataVec.asUInt
+    }
+
+    def isOffchip(): Bool = {
+      val use_D = forward_D && forward_result_valid
+      val use_mshr = forward_mshr && forward_result_valid
+      use_D && offchip_D || use_mshr && offchip_mshr
     }
   }
 
