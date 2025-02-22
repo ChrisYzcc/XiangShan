@@ -1695,6 +1695,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule
 
   val s2_offchip = s2_ld_raw_data_frm_pipe.isOffchip()
   val s3_offchip = RegEnable(s2_offchip, s2_fire)
+  io.lsq.ldin.bits.is_offchip := s3_offchip
 
   // duplicate reg for ldout and vecldout
   private val LdDataDup = 3
