@@ -372,11 +372,11 @@ case class XSCoreParameters
     "shvstvecd", "smaia", "smcsrind", "smdbltrp", "smmpm", "smnpm", "smrnmi", "smstateen",
     "ss1p13", "ssaia", "ssccptr", "sscofpmf", "sscounterenw", "sscsrind", "ssdbltrp", "ssnpm",
     "sspm", "ssstateen", "ssstrict", "sstc", "sstvala", "sstvecd", "ssu64xl", "supm", "sv39",
-    "sv48", "svade", "svbare", "svinval", "svnapot", "svpbmt", "za64rs", "zacas", "zawrs", "zba",
-    "zbb", "zbc", "zbkb", "zbkc", "zbkx", "zbs", "zcb", "zcmop", "zfa", "zfh", "zfhmin", "zic64b",
-    "zicbom", "zicbop", "zicboz", "ziccamoa", "ziccif", "zicclsm", "ziccrse", "zicntr", "zicond",
-    "zicsr", "zifencei", "zihintntl", "zihintpause", "zihpm", "zimop", "zkn", "zknd", "zkne", "zknh",
-    "zksed", "zksh", "zkt", "zvbb", "zvfh", "zvfhmin", "zvkt", "zvl128b", "zvl32b", "zvl64b"
+    "sv48", "svade", "svbare", "svinval", "svnapot", "svpbmt", "za64rs", "zacas", "zba", "zbb",
+    "zbc", "zbkb", "zbkc", "zbkx", "zbs", "zcb", "zcmop", "zfa", "zfh", "zfhmin", "zic64b",
+    "zicbom", "zicbop", "zicboz", "ziccif", "zicclsm", "ziccrse", "zicntr", "zicond", "zicsr",
+    "zifencei", "zihintpause", "zihpm", "zimop", "zkn", "zknd", "zkne", "zknh", "zksed", "zksh",
+    "zkt", "zvbb", "zvfh", "zvfhmin", "zvkt", "zvl128b", "zvl32b", "zvl64b"
   )
 
   def vlWidth = log2Up(VLEN) + 1
@@ -569,10 +569,9 @@ case class DebugOptions
   AlwaysBasicDiff: Boolean = true,
   EnableDebug: Boolean = false,
   EnablePerfDebug: Boolean = true,
-  PerfLevel: String = "VERBOSE",
   UseDRAMSim: Boolean = false,
   EnableConstantin: Boolean = true,
-  EnableChiselDB: Boolean = true,
+  EnableChiselDB: Boolean = false,
   AlwaysBasicDB: Boolean = true,
   EnableRollingDB: Boolean = false
 )
@@ -817,7 +816,6 @@ trait HasXSParameter {
   def VSegmentBufferSize = coreParams.VSegmentBufferSize
   def VFOFBufferSize = coreParams.VFOFBufferSize
   def UncacheBufferSize = coreParams.UncacheBufferSize
-  def UncacheBufferIndexWidth = log2Up(UncacheBufferSize)
   def EnableLoadToLoadForward = coreParams.EnableLoadToLoadForward
   def EnableFastForward = coreParams.EnableFastForward
   def EnableLdVioCheckAfterReset = coreParams.EnableLdVioCheckAfterReset
