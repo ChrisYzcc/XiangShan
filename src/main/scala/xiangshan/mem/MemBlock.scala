@@ -46,7 +46,7 @@ import xiangshan.backend.Bundles._
 import xiangshan.mem._
 import xiangshan.mem.mdp._
 import xiangshan.mem.Bundles._
-import xiangshan.mem.prefetch.{BasePrefecher, L1Prefetcher, SMSParams, SMSPrefetcher}
+import xiangshan.mem.prefetch.{BasePrefecher, L1Prefetcher, SMSParams, SMSPrefetcher, LLCPrefetcher}
 import xiangshan.cache._
 import xiangshan.cache.mmu._
 import coupledL2.PrefetchRecv
@@ -268,6 +268,8 @@ class MemBlockInlined()(implicit p: Parameters) extends LazyModule
   val l3_pf_sender_opt = if (p(SoCParamsKey).L3CacheParamsOpt.nonEmpty) coreParams.prefetcher.map(_ =>
     BundleBridgeSource(() => new huancun.PrefetchRecv)
   ) else None
+  val llc_pf_sender_opt = BundleBridgeSource(() => new PrefetchRecv)
+
   val frontendBridge = LazyModule(new FrontendBridge)
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
@@ -476,6 +478,13 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   }
   val pf_train_on_hit = RegNextN(io.ooo_to_mem.csrCtrl.pf_ctrl.l1D_pf_train_on_hit, 2, Some(true.B))
 
+  // llc prefetcher
+  val llc_prefetcher = Module(new LLCPrefetcher())
+  llc_prefetcher.io <> DontCare   // TODO: add store information?
+  llc_prefetcher.io.enable  := Constantin.createRecord(s"enableLLCPrefetcher$hartId", initValue = true)
+  outer.llc_pf_sender_opt.out.head._1.addr_valid  := llc_prefetcher.io.l3_req.valid
+  outer.llc_pf_sender_opt.out.head._1.addr        := llc_prefetcher.io.l3_req.bits
+
   loadUnits.zipWithIndex.map(x => x._1.suggestName("LoadUnit_"+x._2))
   storeUnits.zipWithIndex.map(x => x._1.suggestName("StoreUnit_"+x._2))
   hybridUnits.zipWithIndex.map(x => x._1.suggestName("HybridUnit_"+x._2))
@@ -655,14 +664,14 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   // dtlb
   val dtlb_ld_tlb_ld = Module(new TLBNonBlock(LduCnt + HyuCnt + 1, 2, ldtlbParams))
   val dtlb_st_tlb_st = Module(new TLBNonBlock(StaCnt, 1, sttlbParams))
-  val dtlb_prefetch_tlb_prefetch = Module(new TLBNonBlock(2, 2, pftlbParams))
+  val dtlb_prefetch_tlb_prefetch = Module(new TLBNonBlock(3, 2, pftlbParams))
   val dtlb_ld = Seq(dtlb_ld_tlb_ld.io)
   val dtlb_st = Seq(dtlb_st_tlb_st.io)
   val dtlb_prefetch = Seq(dtlb_prefetch_tlb_prefetch.io)
   /* tlb vec && constant variable */
   val dtlb = dtlb_ld ++ dtlb_st ++ dtlb_prefetch
   val (dtlb_ld_idx, dtlb_st_idx, dtlb_pf_idx) = (0, 1, 2)
-  val TlbSubSizeVec = Seq(LduCnt + HyuCnt + 1, StaCnt, 2) // (load + hyu + stream pf, store, sms+l2bop)
+  val TlbSubSizeVec = Seq(LduCnt + HyuCnt + 1, StaCnt, 3) // (load + hyu + stream pf, store, sms+l2bop+llc)
   val DTlbSize = TlbSubSizeVec.sum
   val TlbStartVec = TlbSubSizeVec.scanLeft(0)(_ + _).dropRight(1)
   val TlbEndVec = TlbSubSizeVec.scanLeft(0)(_ + _).drop(1)
@@ -925,6 +934,15 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
       pf.io.ld_in(i).bits := source.bits
     })
 
+    // llc prefetcher pred (load instr -> prefetcher)
+    llc_prefetcher.io_pred_in(i).valid  := loadUnits(i).io.ldin.fire
+    llc_prefetcher.io_pred_in(i).bits   := loadUnits(i).io.ldin.bits
+
+    // llc prefetcher train (load instr res -> prefetcher)
+    llc_prefetcher.io.ld_in(i).valid  := loadUnits(i).io.lsq.ldin.fire
+    llc_prefetcher.io.ld_in(i).bits   := DontCare
+    llc_prefetcher.io.ld_in(i).bits.uop := loadUnits(i).io.lsq.ldin.bits.uop
+
     // load to load fast forward: load(i) prefers data(i)
     val l2l_fwd_out = loadUnits.map(_.io.l2l_fwd_out) ++ hybridUnits.map(_.io.ldu_io.l2l_fwd_out)
     val fastPriority = (i until LduCnt + HyuCnt) ++ (0 until i)
@@ -1165,6 +1183,7 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   val StreamDTLBPortIndex = TlbStartVec(dtlb_ld_idx) + LduCnt + HyuCnt
   val PrefetcherDTLBPortIndex = TlbStartVec(dtlb_pf_idx)
   val L2toL1DLBPortIndex = TlbStartVec(dtlb_pf_idx) + 1
+  val LLCPrefetcherDTLBPortIndex = TlbStartVec(dtlb_pf_idx) + 2
   prefetcherOpt match {
   case Some(pf) =>
     dtlb_reqs(PrefetcherDTLBPortIndex) <> pf.io.tlb_req
@@ -1186,6 +1205,9 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   dtlb_reqs(L2toL1DLBPortIndex) <> io.l2_tlb_req
   dtlb_reqs(L2toL1DLBPortIndex).resp.ready := true.B
   io.l2_pmp_resp := pmp_check(L2toL1DLBPortIndex).resp
+
+  dtlb_reqs(LLCPrefetcherDTLBPortIndex) <> llc_prefetcher.io.tlb_req
+  llc_prefetcher.io.pmp_resp  := pmp_check(LLCPrefetcherDTLBPortIndex).resp
 
   // StoreUnit
   for (i <- 0 until StdCnt) {
