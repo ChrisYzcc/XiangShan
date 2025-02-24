@@ -938,7 +938,10 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
     llc_prefetcher.io_pred_in(i).bits   := loadUnits(i).io.ldin.bits
 
     // llc prefetcher train (load instr res -> prefetcher)
-    llc_prefetcher.io.ld_in(i).valid  := loadUnits(i).io.lsq.ldin.fire
+    val need_rep = loadUnits(i).io.lsq.ldin.bits.rep_info.need_rep
+    val need_valid = loadUnits(i).io.lsq.ldin.bits.updateAddrValid
+    val isvec = loadUnits(i).io.lsq.ldin.bits.isvec
+    llc_prefetcher.io.ld_in(i).valid  := loadUnits(i).io.lsq.ldin.fire && !need_rep && need_valid && !isvec
     llc_prefetcher.io.ld_in(i).bits   := DontCare
     llc_prefetcher.io.ld_in(i).bits.uop := loadUnits(i).io.lsq.ldin.bits.uop
 
