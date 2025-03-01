@@ -607,6 +607,9 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
 
   dcache.io.lqEmpty := lsq.io.lqEmpty
 
+  // llc prefetch rec req
+  llc_prefetcher.io_rec_req <> lsq.io.llc_rec_req
+
   // load/store prefetch to l2 cache
   prefetcherOpt.foreach(sms_pf => {
     l1PrefetcherOpt.foreach(l1_pf => {
@@ -945,6 +948,10 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
     llc_prefetcher.io.ld_in(i).valid  := loadUnits(i).io.lsq.ldin.fire && !need_rep && need_valid && !isvec
     llc_prefetcher.io.ld_in(i).bits   := DontCare
     llc_prefetcher.io.ld_in(i).bits.uop := loadUnits(i).io.lsq.ldin.bits.uop
+    llc_prefetcher.io.ld_in(i).bits.is_offchip  := loadUnits(i).io.lsq.ldin.bits.is_offchip
+
+    // llc prefetch record response
+    llc_prefetcher.io_rec_rsp(i)  <> lsq.io.llc_rec_rsp(i)
 
     // load to load fast forward: load(i) prefers data(i)
     val l2l_fwd_out = loadUnits.map(_.io.l2l_fwd_out) ++ hybridUnits.map(_.io.ldu_io.l2l_fwd_out)

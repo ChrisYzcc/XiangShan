@@ -125,6 +125,8 @@ object Bundles {
     val meta_prefetch = UInt(L1PfSourceBits.W)
     val meta_access = Bool()
 
+    val is_offchip = Bool()
+
     def fromLsPipelineBundle(input: LsPipelineBundle, latch: Boolean = false, enable: Bool = true.B) = {
       val inputReg = latch match {
         case true   => RegEnable(input, enable)
@@ -153,6 +155,8 @@ object Bundles {
     // queue entry data, except flag bits, will be updated if writeQueue is true,
     // valid bit in LqWriteBundle will be ignored
     val data_wen_dup = Vec(6, Bool()) // dirty reg dup
+
+    val is_offchip = Bool()
 
     def fromLsPipelineBundle(input: LsPipelineBundle, latch: Boolean = false, enable: Bool = true.B) = {
       val inputReg = latch match {

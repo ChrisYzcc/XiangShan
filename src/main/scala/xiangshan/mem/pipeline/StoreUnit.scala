@@ -535,6 +535,8 @@ class StoreUnit(implicit p: Parameters) extends XSModule
   io.prefetch_train.bits.misalignNeedWakeUp := false.B
   io.prefetch_train.bits.updateAddrValid := false.B
   io.prefetch_train.bits.hasException := false.B
+  // TODO: add store offchip hint?
+  io.prefetch_train.bits.is_offchip := false.B
 
   // Pipeline
   // --------------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import xiangshan.backend.decode.isa.bitfield.{InstVType, XSInstBitFields}
 import xiangshan.backend.fu.FuType
 import xiangshan.mem.Bundles._
 import xiangshan.cache._
+import xiangshan.mem.prefetch.LLCRecordBundle
 
 class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   with HasDCacheParameters
@@ -55,6 +56,9 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
     val lqCancelCnt = Output(UInt(log2Up(VirtualLoadQueueSize+1).W))
     // for topdown
     val noUopsIssued = Input(Bool())
+    // for llc prefetcher
+    val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
+    val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
   })
 
   println("VirtualLoadQueue: size: " + VirtualLoadQueueSize)
@@ -226,7 +230,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
       load_delay_entry.delay := timer_vec((deqPtr + i.U).value)
       LoadLatencyTable.log(
         data = load_delay_entry,
-        en = commitCount > i.U && ~debug_mmio((deqPtr + i.U).value),
+        en = commitCount > i.U && !debug_mmio((deqPtr + i.U).value),
         site = "virtualQueue",
         clock = clock,
         reset = reset
@@ -297,6 +301,30 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
       io.ldin(i).bits.mmio,
       io.ldin(i).bits.isvec
     )
+  }
+
+  /**
+   *  Prefetch Record from LLC Prefetcher (Predictor?)
+   *
+   *  When LLC Pft generates a prefetch req, it will record the meta data to the entry in VLQ.
+   *  When the load instructions are committed, the meta data will be provided to LLC Pft for training.
+   * */
+  val rec_req = io.llc_rec_req
+  val records = RegInit(VecInit(Seq.fill(VirtualLoadQueueSize){0.U.asTypeOf(new LLCRecordBundle)}))
+
+  val update_idx = rec_req.bits.uop.lqIdx.value
+  val need_update = rec_req.valid && robIdx(update_idx) === rec_req.bits.uop.robIdx
+  when (need_update){
+    records(update_idx) := rec_req.bits
+  }
+
+  val rec_rsp = io.llc_rec_rsp
+  for (i <- 0 until LoadPipelineWidth){
+    val lq_idx = io.ldin(i).bits.uop.lqIdx.value
+    val hit = allocated(lq_idx) && robIdx(lq_idx) === io.ldin(i).bits.uop.robIdx
+
+    rec_rsp(i).valid  := io.ldin(i).valid && hit
+    rec_rsp(i).bits   := records(lq_idx)
   }
 
   //  perf counter
