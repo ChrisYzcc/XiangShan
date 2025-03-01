@@ -28,9 +28,10 @@ import xiangshan.backend.rob.RobLsqIO
 import xiangshan.backend.fu.FuType
 import xiangshan.mem.Bundles._
 import xiangshan.cache._
-import xiangshan.cache.{DCacheWordIO, DCacheLineIO, MemoryOpConstants}
+import xiangshan.cache.{DCacheLineIO, DCacheWordIO, MemoryOpConstants}
 import xiangshan.cache.{CMOReq, CMOResp}
-import xiangshan.cache.mmu.{TlbRequestIO, TlbHintIO}
+import xiangshan.cache.mmu.{TlbHintIO, TlbRequestIO}
+import xiangshan.mem.prefetch.LLCRecordBundle
 
 class ExceptionAddrIO(implicit p: Parameters) extends XSBundle {
   val isStore = Input(Bool())
@@ -126,6 +127,10 @@ class LsqWrapper(implicit p: Parameters) extends XSModule with HasDCacheParamete
     val flushSbuffer = new SbufferFlushBundle
     val force_write = Output(Bool())
     val lqEmpty = Output(Bool())
+
+    // for llc prefetcher
+    val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
+    val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
 
     // top-down
     val debugTopDown = new LoadQueueTopDownIO
@@ -227,6 +232,8 @@ class LsqWrapper(implicit p: Parameters) extends XSModule with HasDCacheParamete
   loadQueue.io.l2_hint             <> io.l2_hint
   loadQueue.io.tlb_hint            <> io.tlb_hint
   loadQueue.io.lqEmpty             <> io.lqEmpty
+  loadQueue.io.llc_rec_req         <> io.llc_rec_req
+  loadQueue.io.llc_rec_rsp         <> io.llc_rec_rsp
 
   // rob commits for lsq is delayed for two cycles, which causes the delayed update for deqPtr in lq/sq
   // s0: commit
