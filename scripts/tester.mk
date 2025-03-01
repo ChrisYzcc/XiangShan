@@ -47,11 +47,14 @@ JSON_PATH_p = $(NOOP_HOME)/scripts/simpoint_summary.json
 JSON_PATH_3 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeMalloc-0.3.json
 JSON_PATH_8 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-jeMalloc-0.8.json
 #SERVER_LIST = open06 open07 open08 open09 open10 open12 open13 open14 open15
-SERVER_LIST = node005 node006 node007 node008 node009 node027 node028 node042
+SERVER_LIST = node005 node006 node007 node008 node009 node027 node028
 XS_PATH = $(NOOP_HOME)
 
-SIMPOPINT_RESDIR = ~/offchip-access/with-prefetch
+SIMPOPINT_RESDIR = ~/offchip-access-8mb/with-prefetch
 simpoint:
 #	-@rm -rf $(SIMPOPINT_RESDIR)
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH_8) --xs $(XS_PATH) --threads 16 --dir $(SIMPOPINT_RESDIR) --resume -L "$(SERVER_LIST)"
 	-@echo "SimPoint analysis done."
+
+kill:
+	python3 ./scripts/task_killer.py "$(SERVER_LIST)"
