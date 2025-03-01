@@ -37,7 +37,7 @@ endif
 run: $(EMU)
 	-@mkdir rpt
 	-@rm $(NOOP_HOME)/rpt/*.txt
-	$(EMU) -i $(WORKLOAD_PATH) --diff $(DIFF_SO) --dump-wave-full 2>$(SIM_ERR) | tee $(SIM_OUT)
+	$(EMU) -i $(WORKLOAD_PATH) --diff $(DIFF_SO) 2>$(SIM_ERR) | tee $(SIM_OUT)
 
 # SimPoint
 PERF_PATH = ~/env-scripts/perf

@@ -33,6 +33,7 @@ import xiangshan.mem.mdp._
 import xiangshan.mem.Bundles._
 import xiangshan.cache._
 import xiangshan.cache.mmu._
+import xiangshan.mem.prefetch.LLCRecordBundle
 
 class LqPtr(implicit p: Parameters) extends CircularQueuePtr[LqPtr](
   p => p(XSCoreParamsKey).VirtualLoadQueueSize
@@ -206,6 +207,10 @@ class LoadQueue(implicit p: Parameters) extends XSModule
 
     val debugTopDown = new LoadQueueTopDownIO
     val noUopsIssed = Input(Bool())
+
+    // for llc prefetcher
+    val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
+    val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
   })
 
   val loadQueueRAR = Module(new LoadQueueRAR)  //  read-after-read violation
@@ -251,6 +256,8 @@ class LoadQueue(implicit p: Parameters) extends XSModule
   virtualLoadQueue.io.lqCancelCnt   <> io.lqCancelCnt
   virtualLoadQueue.io.lqEmpty       <> io.lqEmpty
   virtualLoadQueue.io.ldWbPtr       <> io.lqDeqPtr
+  virtualLoadQueue.io.llc_rec_req   <> io.llc_rec_req
+  virtualLoadQueue.io.llc_rec_rsp   <> io.llc_rec_rsp
 
   /**
    * Load queue exception buffer
