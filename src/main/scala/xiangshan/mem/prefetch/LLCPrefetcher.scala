@@ -146,6 +146,13 @@ class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XS
     backendParams.LdExuCnt)
   )
 
+  // for accuracy perfing
+  val correct_seq = Seq.fill(backendParams.LdExuCnt){RegInit(0.U(XLEN.W))}
+  val incorrect_seq = Seq.fill(backendParams.LdExuCnt){RegInit(0.U(XLEN.W))}
+
+  //val correct_offchip_seq = Seq.fill(backendParams.LdExuCnt){RegInit(0.U(XLEN.W))}
+  //val incorret_offchip_seq = Seq.fill(backendParams.LdExuCnt){RegInit(0.U(XLEN.W))}
+
   // enq
   for (i <- 0 until backendParams.LdExuCnt){
     val v = res(i).valid && rec(i).valid
@@ -159,6 +166,16 @@ class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XS
     XSPerfAccumulate(s"FailToEnqLLCTrainChannel$i", !res_que(i).io.enq.ready & v)
     XSPerfAccumulate(s"correctLLCPrefetch$i", v && res(i).bits.is_offchip === rec(i).bits.above_threshold)
     XSPerfAccumulate(s"incorrectLLCPrefetch$i", v && res(i).bits.is_offchip =/= rec(i).bits.above_threshold)
+    XSPerfAccumulate(s"correctOffchipLLCPrefetch$i", v && res(i).bits.is_offchip === rec(i).bits.above_threshold && res(i).bits.is_offchip)
+    XSPerfAccumulate(s"incorrectOffchipLLCPrefetch$i", v && res(i).bits.is_offchip =/= rec(i).bits.above_threshold && res(i).bits.is_offchip)
+
+    when (v && res(i).bits.is_offchip === rec(i).bits.above_threshold){
+      correct_seq(i)  := correct_seq(i) + 1.U
+    }
+
+    when (v && res(i).bits.is_offchip =/= rec(i).bits.above_threshold){
+      incorrect_seq(i)  := incorrect_seq(i) + 1.U
+    }
   }
 
   // deq
@@ -369,10 +386,6 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
   }
 }
 
-/*
-*   Dummy Prefetcher
-*   use random number to decide wheter issue a prefetch request.
-* */
 class BaseLLCPrefetcher()(implicit p: Parameters) extends XSModule {
   val io = IO(new Bundle(){
     val pred_req = Flipped(DecoupledIO(new LLCPredReq()))
@@ -559,29 +572,60 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
 }
 
 class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
+  val use_perceptron = Constantin.createRecord("usePerceptronLLCPft", true)
+  val use_random = Constantin.createRecord("useRandomLLCPft", false)
+
+  assert(use_random ^ use_perceptron, "only one LLC pft could be in effect")
+
   val io_pred_in = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(new MemExuInput))))
   val io_rec_req = IO(ValidIO(new LLCRecordBundle))
   val io_rec_rsp = IO(Vec(backendParams.LdExuCnt, Flipped(ValidIO(new LLCRecordBundle))))
 
   val pred_filter = Module(new LLCPredReqFilter(size = 16, name = "pred_filter"))
-  val prefetcher = Module(new PerceptronLLCPrefetcher())
   val pft_filter = Module(new LLCPrefetchFilter(size = 16, name = "pft_filter"))
   val train_filter = Module(new LLCTrainFilter(size = 72, name = "train_filter"))
+
+  val perceptron_prefetcher = Module(new PerceptronLLCPrefetcher())
+  val random_prefetcher = Module(new RandomLLCPrefetcher())
+
+  // default
+  io_rec_req  <> DontCare
+  pred_filter.io.pred_req.ready := false.B
+  pft_filter.io.gen_req <> DontCare
 
   pred_filter.io.enable := io.enable
   pred_filter.io.flush  := false.B
   pred_filter.io.ld_in  <> io_pred_in
 
-  prefetcher.io.pred_req  <> pred_filter.io.pred_req
-  prefetcher.io.pft_req   <> pft_filter.io.gen_req
-  prefetcher.io.pft_rec   <> io_rec_req
+  when (use_perceptron){
+    perceptron_prefetcher.io.pred_req   <> pred_filter.io.pred_req
+    perceptron_prefetcher.io.pft_req    <> pft_filter.io.gen_req
+    perceptron_prefetcher.io.pft_rec    <> io_rec_req
+    perceptron_prefetcher.io.train_req  <> train_filter.io.train_req
+  }.otherwise{
+    perceptron_prefetcher.io.pred_req   <> DontCare
+    perceptron_prefetcher.io.pft_req    <> DontCare
+    perceptron_prefetcher.io.pft_rec    <> DontCare
+    perceptron_prefetcher.io.train_req  <> DontCare
+  }
+
+  when (use_random){
+    random_prefetcher.io.pred_req   <> pred_filter.io.pred_req
+    random_prefetcher.io.pft_req    <> pft_filter.io.gen_req
+    random_prefetcher.io.pft_rec    <> io_rec_req
+    random_prefetcher.io.train_req  <> train_filter.io.train_req
+  }.otherwise{
+    random_prefetcher.io.pred_req   <> DontCare
+    random_prefetcher.io.pft_req    <> DontCare
+    random_prefetcher.io.pft_rec    <> DontCare
+    random_prefetcher.io.train_req  <> DontCare
+  }
 
   pft_filter.io.tlb_req   <> io.tlb_req
   pft_filter.io.pmp_resp  <> io.pmp_resp
 
   train_filter.io.ld_res  <> io.ld_in
   train_filter.io.pft_rec <> io_rec_rsp
-  train_filter.io.train_req <> prefetcher.io.train_req
 
   val is_valid_addr = PmemRanges.map(_.cover(pft_filter.io.llc_pf_addr.bits)).reduce(_ || _)
   io.l3_req.valid := pft_filter.io.llc_pf_addr.valid && is_valid_addr

@@ -29,6 +29,8 @@ ifeq ($(WORKLOAD), microbench)
 	WORKLOAD_PATH = $(NOOP_HOME)/ready-to-run/microbench.bin
 else ifeq ($(WORKLOAD), coremark)
 	WORKLOAD_PATH = /nfs/home/share/ci-workloads/nexus-am-workloads/apps/coremark/coremark-riscv64-xs.bin
+else ifeq ($(WORKLOAD), linux)
+	WORKLOAD_PATH = $(NOOP_HOME)/ready-to-run/linux.bin
 else
 	echo "Unknown workload."
 	exit
@@ -50,7 +52,7 @@ JSON_PATH_8 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-j
 SERVER_LIST = node005 node006 node007 node008 node009 node027 node028
 XS_PATH = $(NOOP_HOME)
 
-SIMPOPINT_RESDIR = ~/offchip-access-8mb/with-prefetch
+SIMPOPINT_RESDIR = ~/llc-prefetch/simpoint_res
 simpoint:
 #	-@rm -rf $(SIMPOPINT_RESDIR)
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH_8) --xs $(XS_PATH) --threads 16 --dir $(SIMPOPINT_RESDIR) --resume -L "$(SERVER_LIST)"
