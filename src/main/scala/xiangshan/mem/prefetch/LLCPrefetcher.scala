@@ -164,6 +164,7 @@ class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XS
     rec_que(i).io.enq.bits  := rec(i).bits
 
     XSPerfAccumulate(s"FailToEnqLLCTrainChannel$i", !res_que(i).io.enq.ready & v)
+    XSPerfAccumulate(s"OffchipFailToEnqLLCTrainChannel$i", !res_que(i).io.enq.ready & v && res(i).bits.is_offchip)
     XSPerfAccumulate(s"correctLLCPrefetch$i", v && res(i).bits.is_offchip === rec(i).bits.above_threshold)
     XSPerfAccumulate(s"incorrectLLCPrefetch$i", v && res(i).bits.is_offchip =/= rec(i).bits.above_threshold)
     XSPerfAccumulate(s"correctOffchipLLCPrefetch$i", v && res(i).bits.is_offchip === rec(i).bits.above_threshold && res(i).bits.is_offchip)
