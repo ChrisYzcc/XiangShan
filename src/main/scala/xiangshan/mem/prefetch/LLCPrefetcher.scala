@@ -196,8 +196,8 @@ class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XS
     train_req(i).bits.pc    := res(i).bits.uop.pc
     train_req(i).bits.vaddr := res(i).bits.vaddr
     train_req(i).bits.drop  := drop
-    train_req(i).bits.need_dec  := res(i).bits.is_offchip && !rec(i).bits.above_threshold
-    train_req(i).bits.need_inc  := !res(i).bits.is_offchip && rec(i).bits.above_threshold
+    train_req(i).bits.need_dec  := !res(i).bits.is_offchip && rec(i).bits.above_threshold
+    train_req(i).bits.need_inc  := res(i).bits.is_offchip && !rec(i).bits.above_threshold
     train_req(i).bits.feat_idx  := rec(i).bits.feat_idx
 
   }
