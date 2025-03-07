@@ -482,6 +482,13 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   val llc_prefetcher = Module(new LLCPrefetcher())
   llc_prefetcher.io <> DontCare   // TODO: add store information?
   llc_prefetcher.io.enable  := Constantin.createRecord(s"enableLLCPrefetcher$hartId", initValue = true)
+
+  llc_prefetcher.io_redirect.valid  := redirect.valid
+  llc_prefetcher.io_redirect.bits   := redirect.bits
+
+  llc_prefetcher.io_l1_pf_req.valid := l1_pf_req.fire
+  llc_prefetcher.io_l1_pf_req.bits  := l1_pf_req.bits.paddr
+
   outer.llc_pf_sender_opt.out.head._1.addr_valid  := llc_prefetcher.io.l3_req.valid
   outer.llc_pf_sender_opt.out.head._1.addr        := llc_prefetcher.io.l3_req.bits
 
@@ -638,6 +645,9 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
       l3_trace.paddr := outer.l3_pf_sender_opt.map(_.out.head._1.addr).getOrElse(0.U)
       val l3_table = ChiselDB.createTable(s"L3PrefetchTrace$hartId", new LoadPfDbBundle, basicDB = false)
       l3_table.log(l3_trace, l1_pf_to_l3.valid, "StreamPrefetchTrace", clock, reset)
+
+      llc_prefetcher.io_sms_pf_req.valid  := sms_pf_to_l2.valid
+      llc_prefetcher.io_sms_pf_req.bits   := sms_pf_to_l2.bits.addr
 
       XSPerfAccumulate("prefetch_fire_l2", outer.l2_pf_sender_opt.get.out.head._1.addr_valid)
       XSPerfAccumulate("prefetch_fire_l3", outer.l3_pf_sender_opt.map(_.out.head._1.addr_valid).getOrElse(false.B))

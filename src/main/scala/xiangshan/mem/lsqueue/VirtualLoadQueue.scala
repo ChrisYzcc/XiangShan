@@ -88,6 +88,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
    */
   val debug_mmio = Reg(Vec(VirtualLoadQueueSize, Bool())) // mmio: inst is an mmio inst
   val debug_paddr = Reg(Vec(VirtualLoadQueueSize, UInt(PAddrBits.W))) // mmio: inst's paddr
+  val debug_is_offchip = Reg(Vec(VirtualLoadQueueSize, Bool()))
 
   //  maintain pointers
   val enqPtrExt = RegInit(VecInit((0 until io.enq.req.length).map(_.U.asTypeOf(new LqPtr))))
@@ -197,6 +198,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
 
       debug_mmio(i) := false.B
       debug_paddr(i) := 0.U
+      debug_is_offchip(i) := false.B
 
       timer_vec(i) := 0.U
     }
@@ -236,7 +238,10 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
         reset = reset
       )
     }
-    //XSPerfAccumulate(i.toString +  "offchip_load", timer_vec((deqPtr + i.U).value) > 400.U && commitCount > i.U && ~debug_mmio((deqPtr + i.U).value))
+    XSPerfAccumulate(i.toString + "vlq_cmt_load_cnt", commitCount > i.U && !debug_mmio((deqPtr + i.U).value))
+    XSPerfAccumulate(i.toString + "vlq_cmt_offchip_load_cnt", commitCount > i.U && !debug_mmio((deqPtr + i.U).value) && debug_is_offchip((deqPtr + i.U).value))
+    XSPerfAccumulate(i.toString + "vlq_cmt_load_tot_delays", Mux(commitCount > i.U && !debug_mmio((deqPtr + i.U).value), timer_vec((deqPtr + i.U).value), 0.U))
+    XSPerfAccumulate(i.toString + "vlq_cmt_offchip_load_delays", Mux(commitCount > i.U && !debug_mmio((deqPtr + i.U).value) && debug_is_offchip((deqPtr + i.U).value), timer_vec((deqPtr + i.U).value), 0.U))
     XSError(commitCount > i.U && !allocated((deqPtr+i.U).value), s"why commit invalid entry $i?\n")
   })
 
@@ -287,6 +292,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
         //  Debug info
         debug_mmio(loadWbIndex) := io.ldin(i).bits.mmio
         debug_paddr(loadWbIndex) := io.ldin(i).bits.paddr
+        debug_is_offchip(loadWbIndex) := io.ldin(i).bits.is_offchip
       }
     }
     XSInfo(io.ldin(i).valid && !need_rep && need_valid,

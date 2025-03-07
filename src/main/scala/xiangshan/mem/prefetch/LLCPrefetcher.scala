@@ -107,6 +107,44 @@ class FeatureBundle()(implicit p: Parameters) extends XSBundle with HasLLCPrefet
   }
 }
 
+class FirstAccTable(AddrBits:Int, TrainPortNum:Int)(implicit p: Parameters) extends XSModule {
+  val io = IO(new Bundle{
+    val req_addr = Input(UInt(AddrBits.W))
+    val train_addr = Flipped(Vec(TrainPortNum, ValidIO(UInt(AddrBits.W))))
+    val is_accessed = Output(Bool())
+  })
+
+  val TagBits = AddrBits - 6 - 6
+
+  val tags = RegInit(VecInit(Seq.fill(64){0.U(TagBits.W)}))
+  val valids = RegInit(VecInit(Seq.fill(64){false.B}))
+  val bitmaps = RegInit(VecInit(Seq.fill(64){0.U(64.W)}))
+
+  def parse_addr(addr: UInt) = {
+    val bitmap_idx = addr(5, 0)
+    val idx = addr(11, 6)
+    val tag = addr(AddrBits - 1, 12)
+    (bitmap_idx, idx, tag)
+  }
+
+  // Proccess Req
+  val (req_bm_idx, req_idx, req_tag) = parse_addr(io.req_addr)
+  val req_hit = tags(req_idx) === req_tag && valids(req_idx)
+  io.is_accessed  := req_hit && bitmaps(req_idx)(req_bm_idx)
+
+  // Process Train
+  for (i <- 0 until TrainPortNum) {
+    val (train_bm_idx, train_idx, train_tag) = parse_addr(io.train_addr(i).bits)
+    val train_hit = tags(train_idx) === train_tag && valids(train_idx)
+    when (io.train_addr(i).valid){
+      valids(train_idx)   := true.B
+      tags(train_idx)     := Mux(train_hit, tags(train_idx), train_tag)
+      bitmaps(train_idx)  := Mux(train_hit, bitmaps(train_idx) | (1.U << train_bm_idx).asUInt, 1.U << train_bm_idx)
+    }
+  }
+
+}
+
 /*
 *   Prefetch Train Req to LLCPrefetcher
 *   (commit ld inst -> trigger a train?)
@@ -199,6 +237,7 @@ class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XS
 * */
 class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends XSModule with HasLLCFilterHelper with HasLLCPrefetchHelper {
   val io = IO(new Bundle() {
+    val redirect = Flipped(Valid(new Redirect))
     val enable = Input(Bool())
     val flush = Input(Bool())
     val ld_in = Flipped(Vec(backendParams.LduCnt, ValidIO(new MemExuInput())))
@@ -217,6 +256,7 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
 
   val entries = Reg(Vec(size, new LLCPredReq()))
   val valids = RegInit(VecInit(Seq.fill(size){ false.B }))
+  val is_flushed = RegInit(VecInit(Seq.fill(size){ false.B}))
 
   // enq
   val enqLen = backendParams.LduCnt
@@ -251,7 +291,7 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
       case(pre, pre_v) => pre_v && block_addr(pre.vaddr) === block_addr(req.vaddr)
     }).orR
 
-    needAlloc(i) := req_v && !entry_match && !prev_enq_match
+    needAlloc(i) := req_v && !entry_match && !prev_enq_match && !req.uop.robIdx.needFlush(io.redirect)
     canAlloc(i) := needAlloc(i) && allocPtr >= deqPtrExt && io.enable
 
     XSPerfAccumulate(s"failToEnqPredReqFilter$i", needAlloc(i) && allocPtr < deqPtrExt)
@@ -259,11 +299,18 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
     when(canAlloc(i)) {
       valids(allocPtr.value) := true.B
       entries(allocPtr.value) := req
+      is_flushed(allocPtr.value)  := false.B
     }
   }
   val allocNum = PopCount(canAlloc)
 
   enqPtrExt.foreach(x => when(canAlloc.asUInt.orR) {x := x + allocNum})
+
+  for (i <- 0 until size) {
+    when (valids(i) && entries(i).uop.robIdx.needFlush(io.redirect)){
+      is_flushed(i) := false.B
+    }
+  }
 
   // deq
   io.pred_req.valid := false.B
@@ -271,13 +318,17 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
   valids.zip(entries).zipWithIndex.foreach {
     case((valid, entry), i) =>
       when(deqPtr === i.U) {
-        io.pred_req.valid := valid && io.enable
+        io.pred_req.valid := valid && io.enable && !is_flushed(i) && !entry.uop.robIdx.needFlush(io.redirect)
         io.pred_req.bits := entry
       }
   }
 
   when(io.pred_req.fire) {
     valids(deqPtr) := false.B
+    deqPtrExt := deqPtrExt + 1.U
+  }
+
+  when(valids(deqPtr) && is_flushed(deqPtr)){
     deqPtrExt := deqPtrExt + 1.U
   }
 
@@ -382,6 +433,7 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
 
 class BaseLLCPrefetcher()(implicit p: Parameters) extends XSModule {
   val io = IO(new Bundle(){
+    val redirect = Flipped(Valid(new Redirect))
     val pred_req = Flipped(DecoupledIO(new LLCPredReq()))
     val pft_req = ValidIO(new PrefetchReqBundle())
     val pft_rec = ValidIO(new LLCRecordBundle())
@@ -402,44 +454,6 @@ class RandomLLCPrefetcher()(implicit p: Parameters) extends BaseLLCPrefetcher {
   io.pft_rec.bits.uop := RegNext(io.pred_req.bits.uop)
   io.pft_rec.bits.above_threshold := RegNext(io.pred_req.fire && (randval & rateMask) === 0.U)
   io.pft_rec.bits.vaddr := RegNext(io.pred_req.bits.vaddr)
-}
-
-class FirstAccTable()(implicit p: Parameters) extends XSModule {
-  val io = IO(new Bundle{
-    val req_addr = Input(UInt(VAddrBits.W))
-    val train_addr = Flipped(Vec(backendParams.LdExuCnt, ValidIO(UInt(VAddrBits.W))))
-    val is_accessed = Output(Bool())
-  })
-
-  val TagBits = VAddrBits - 6 - 6
-
-  val tags = RegInit(VecInit(Seq.fill(64){0.U(TagBits.W)}))
-  val valids = RegInit(VecInit(Seq.fill(64){false.B}))
-  val bitmaps = RegInit(VecInit(Seq.fill(64){0.U(64.W)}))
-
-  def parse_addr(addr: UInt) = {
-    val bitmap_idx = addr(5, 0)
-    val idx = addr(11, 6)
-    val tag = addr(VAddrBits - 1, 12)
-    (bitmap_idx, idx, tag)
-  }
-
-  // Proccess Req
-  val (req_bm_idx, req_idx, req_tag) = parse_addr(io.req_addr)
-  val req_hit = tags(req_idx) === req_tag && valids(req_idx)
-  io.is_accessed  := req_hit && bitmaps(req_idx)(req_bm_idx)
-
-  // Process Train
-  for (i <- 0 until backendParams.LdExuCnt) {
-    val (train_bm_idx, train_idx, train_tag) = parse_addr(io.train_addr(i).bits)
-    val train_hit = tags(train_idx) === train_tag && valids(train_idx)
-    when (io.train_addr(i).valid){
-      valids(train_idx)   := true.B
-      tags(train_idx)     := Mux(train_hit, tags(train_idx), train_tag)
-      bitmaps(train_idx)  := Mux(train_hit, bitmaps(train_idx) | (1.U << train_bm_idx).asUInt, 1.U << train_bm_idx)
-    }
-  }
-
 }
 
 class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) extends BaseLLCPrefetcher with HasLLCPrefetcherParam {
@@ -470,7 +484,7 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
   }
 
   // Access Table
-  val AccessTab = Module(new FirstAccTable())
+  val AccessTab = Module(new FirstAccTable(AddrBits = VAddrBits, TrainPortNum = backendParams.LdExuCnt))
   AccessTab.io.req_addr   := io.pred_req.bits.vaddr
   AccessTab.io.train_addr <> io_upt_vaddr
 
@@ -558,15 +572,13 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
 
       val inc_cnt = PopCount(need_inc)
       val dec_cnt = PopCount(need_dec)
-      dontTouch(inc_cnt)
-      dontTouch(dec_cnt)
 
       when (inc_cnt > dec_cnt) {
-        w_matrix(i)(j)  := update_inc(w_matrix(i)(j), TN.asSInt, (inc_cnt - dec_cnt).asSInt)
+        w_matrix(i)(j)  := update_inc(w_matrix(i)(j), TP.asSInt, (inc_cnt - dec_cnt).asSInt)
       }
 
       when (dec_cnt > inc_cnt) {
-        w_matrix(i)(j)  := update_dec(w_matrix(i)(j), TP.asSInt, (dec_cnt - inc_cnt).asSInt)
+        w_matrix(i)(j)  := update_dec(w_matrix(i)(j), TN.asSInt, (dec_cnt - inc_cnt).asSInt)
       }
     }
   }
@@ -601,10 +613,12 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
     sat_cnt := Mux((sat_cnt - dec_delta.asSInt) <= 0.S, 0.S, sat_cnt - dec_delta.asSInt)
   }
 
-  val use_sat_cnt = Constantin.createRecord("useSaturateCnt", true)
+  val use_sat_cnt = Constantin.createRecord("useSaturateCnt", false)
   val sat_positive = use_sat_cnt && (sat_cnt >= 5.S) || !use_sat_cnt
 
   /*------------------------------ s1 ------------------------------*/
+  val s1_valid = io.pred_req.valid && !io.pred_req.bits.uop.robIdx.needFlush(io.redirect)
+
   // Calculate Features
   val vaddr = io.pred_req.bits.vaddr
   val pc = io.pred_req.bits.pc
@@ -637,22 +651,24 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
   }
 
   /*------------------------------ s2 ------------------------------*/
+  val req_reg = RegNext(io.pred_req.bits)
+  val feat_idx_reg = RegNext(feat_idx)
+
+  val s2_valid  = RegNext(s1_valid) && !req_reg.uop.robIdx.needFlush(io.redirect)
+
   val tau_act = Constantin.createRecord("LLCPredictorActThreshold", -18)
   val sum = weights.reduce(_ + _)
-
-  val feat_idx_reg = RegNext(feat_idx)
-  val req_reg = RegNext(io.pred_req.bits)
-  val reqv_reg = RegNext(io.pred_req.valid)
   val above_threshold = sum > tau_act.asSInt
+  dontTouch(sum)
 
   // to prefetch filter
-  io.pft_req.valid  := above_threshold && reqv_reg && sat_positive
+  io.pft_req.valid  := above_threshold && s2_valid && sat_positive
   io.pft_req.bits   := DontCare
   io.pft_req.bits.pc    := req_reg.pc
   io.pft_req.bits.vaddr := req_reg.vaddr
 
   // to train filter
-  io.pft_rec.valid  := reqv_reg
+  io.pft_rec.valid  := s2_valid
   io.pft_rec.bits.vaddr := req_reg.vaddr
   io.pft_rec.bits.uop   := req_reg.uop
   io.pft_rec.bits.above_threshold := above_threshold
@@ -669,6 +685,9 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
   val io_pred_in = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(new MemExuInput))))
   val io_rec_req = IO(ValidIO(new LLCRecordBundle))
   val io_rec_rsp = IO(Vec(backendParams.LdExuCnt, Flipped(ValidIO(new LLCRecordBundle))))
+  val io_redirect = IO(Flipped(Valid(new Redirect)))
+  val io_l1_pf_req   = IO(Flipped(ValidIO(UInt(PAddrBits.W))))
+  val io_sms_pf_req  = IO(Flipped(ValidIO(UInt(PAddrBits.W))))
 
   val pred_filter = Module(new LLCPredReqFilter(size = 16, name = "pred_filter"))
   val pft_filter = Module(new LLCPrefetchFilter(size = 16, name = "pft_filter"))
@@ -676,6 +695,16 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
 
   val perceptron_prefetcher = Module(new PerceptronLLCPrefetcher())
   val random_prefetcher = Module(new RandomLLCPrefetcher())
+
+  // redirect
+  val use_redirect = Constantin.createRecord("llcUseRedirect", true)
+
+  perceptron_prefetcher.io.redirect.valid := io_redirect.valid & use_redirect
+  perceptron_prefetcher.io.redirect.bits  := io_redirect.bits
+  random_prefetcher.io.redirect.valid     := io_redirect.valid & use_redirect
+  random_prefetcher.io.redirect.bits      := io_redirect.bits
+  pred_filter.io.redirect.valid           := io_redirect.valid & use_redirect
+  pred_filter.io.redirect.bits            := io_redirect.bits
 
   // default
   io_rec_req  <> DontCare
@@ -719,8 +748,21 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
   train_filter.io.ld_res  <> io.ld_in
   train_filter.io.pft_rec <> io_rec_rsp
 
+  // magic?
+  val pft_acc_tab = Module(new FirstAccTable(AddrBits = PAddrBits, TrainPortNum = 2))
+  pft_acc_tab.io.req_addr := pft_filter.io.llc_pf_addr.bits
+
+  pft_acc_tab.io.train_addr(0).valid  := io_l1_pf_req.valid
+  pft_acc_tab.io.train_addr(0).bits   := io_l1_pf_req.bits
+
+  pft_acc_tab.io.train_addr(1).valid  := io_sms_pf_req.valid
+  pft_acc_tab.io.train_addr(1).bits   := io_sms_pf_req.bits
+
+  val use_pft_acc_tab = Constantin.createRecord("usePftAccTab", false)
+  val pft_acc_tab_allow = !pft_acc_tab.io.is_accessed && use_pft_acc_tab || !use_pft_acc_tab
+
   val is_valid_addr = PmemRanges.map(_.cover(pft_filter.io.llc_pf_addr.bits)).reduce(_ || _)
-  io.l3_req.valid := pft_filter.io.llc_pf_addr.valid && is_valid_addr
+  io.l3_req.valid := pft_filter.io.llc_pf_addr.valid && is_valid_addr && pft_acc_tab_allow
   io.l3_req.bits  := pft_filter.io.llc_pf_addr.bits
 
   io.l1_req.valid := false.B
