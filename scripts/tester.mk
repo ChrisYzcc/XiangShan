@@ -52,7 +52,7 @@ JSON_PATH_8 = /nfs/home/share/liyanqin/env-scripts/perf/json/gcc12o3-incFpcOff-j
 SERVER_LIST = node005 node006 node007 node008 node009 node027 node028
 XS_PATH = $(NOOP_HOME)
 
-SIMPOPINT_RESDIR = ~/res-4mb/with-pft-and-llc-drop0-0.3
+SIMPOPINT_RESDIR = ~/res-4mb/without-pft-and-llc-drop0.5-0.3-tau-18
 simpoint:
 #	-@rm -rf $(SIMPOPINT_RESDIR)
 	$(PYTHON) $(PERF_PATH)/xs_autorun_multiServer.py $(GCPT_PATH) $(JSON_PATH_3) --xs $(XS_PATH) --threads 16 --dir $(SIMPOPINT_RESDIR) --resume -L "$(SERVER_LIST)"
