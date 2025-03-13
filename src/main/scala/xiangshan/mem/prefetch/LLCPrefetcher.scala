@@ -385,8 +385,9 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
   // TODO: add vaddr & paddr hit check
   // TODO: add plru if there is no available entry
   val availableVec = VecInit(valids.map(e => !e))
-  val canAlloc = availableVec.asUInt.orR
-  val allocIdx = OHToUInt(availableVec)
+  val canAlloc = Cat(availableVec).orR
+  val availableOH = PriorityEncoderOH(availableVec)
+  val allocIdx = OHToUInt(availableOH)
   assert(!io.gen_req.valid || canAlloc, "currently we always have free entry.")
 
   val alloc_entry = entries(allocIdx)
