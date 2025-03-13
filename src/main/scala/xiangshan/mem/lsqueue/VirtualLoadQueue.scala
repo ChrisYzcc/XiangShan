@@ -58,6 +58,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
     val noUopsIssued = Input(Bool())
     // for llc prefetcher
     val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
+    val llc_rec_upt_req = Flipped(ValidIO(new LLCRecordBundle))
     val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
   })
 
@@ -322,6 +323,13 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val need_update = rec_req.valid && robIdx(update_idx) === rec_req.bits.uop.robIdx
   when (need_update){
     records(update_idx) := rec_req.bits
+  }
+
+  val rec_upt_req = io.llc_rec_upt_req
+  val upt_update_idx = rec_upt_req.bits.uop.lqIdx.value
+  val upt_need_update = rec_upt_req.valid && robIdx(upt_update_idx) === rec_upt_req.bits.uop.robIdx
+  when (upt_need_update) {
+    records(upt_update_idx).issue_pft  := rec_upt_req.bits.issue_pft
   }
 
   val rec_rsp = io.llc_rec_rsp

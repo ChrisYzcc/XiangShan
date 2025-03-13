@@ -615,7 +615,8 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
   dcache.io.lqEmpty := lsq.io.lqEmpty
 
   // llc prefetch rec req
-  llc_prefetcher.io_rec_req <> lsq.io.llc_rec_req
+  llc_prefetcher.io_rec_req     <> lsq.io.llc_rec_req
+  llc_prefetcher.io_rec_upt_req <> lsq.io.llc_rec_upt_req
 
   // load/store prefetch to l2 cache
   prefetcherOpt.foreach(sms_pf => {
@@ -959,6 +960,7 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
     llc_prefetcher.io.ld_in(i).bits   := DontCare
     llc_prefetcher.io.ld_in(i).bits.uop := loadUnits(i).io.lsq.ldin.bits.uop
     llc_prefetcher.io.ld_in(i).bits.is_offchip  := loadUnits(i).io.lsq.ldin.bits.is_offchip
+    llc_prefetcher.io.ld_in(i).bits.vaddr       := loadUnits(i).io.lsq.ldin.bits.vaddr
 
     // llc prefetch record response
     llc_prefetcher.io_rec_rsp(i)  <> lsq.io.llc_rec_rsp(i)

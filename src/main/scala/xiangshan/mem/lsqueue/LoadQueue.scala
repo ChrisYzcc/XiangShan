@@ -210,6 +210,7 @@ class LoadQueue(implicit p: Parameters) extends XSModule
 
     // for llc prefetcher
     val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
+    val llc_rec_upt_req = Flipped(ValidIO(new LLCRecordBundle))
     val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
   })
 
@@ -258,6 +259,7 @@ class LoadQueue(implicit p: Parameters) extends XSModule
   virtualLoadQueue.io.ldWbPtr       <> io.lqDeqPtr
   virtualLoadQueue.io.llc_rec_req   <> io.llc_rec_req
   virtualLoadQueue.io.llc_rec_rsp   <> io.llc_rec_rsp
+  virtualLoadQueue.io.llc_rec_upt_req <> io.llc_rec_upt_req
 
   /**
    * Load queue exception buffer
