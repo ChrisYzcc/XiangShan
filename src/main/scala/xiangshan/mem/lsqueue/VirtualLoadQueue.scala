@@ -75,6 +75,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val uopIdx = Reg(Vec(VirtualLoadQueueSize, UopIdx()))
   val isvec = RegInit(VecInit(List.fill(VirtualLoadQueueSize)(false.B))) // vector load flow
   val committed = Reg(Vec(VirtualLoadQueueSize, Bool()))
+  val isRecorded = RegInit(VecInit(Seq.fill(VirtualLoadQueueSize){false.B}))
 
   // used for offchip access monitor
   val timer_vec = RegInit(VecInit(List.fill(VirtualLoadQueueSize)(0.U(XLEN.W))))
@@ -228,6 +229,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   (0 until DeqPtrMoveStride).map(i => {
     when (commitCount > i.U) {
       allocated((deqPtr+i.U).value) := false.B
+      isRecorded((deqPtr+i.U).value) := false.B
 
       val load_delay_entry = Wire(new LoadDelayEntry)
       load_delay_entry.delay := timer_vec((deqPtr + i.U).value)
@@ -265,7 +267,8 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   // invalidate lq term using robIdx
   for (i <- 0 until VirtualLoadQueueSize) {
     when (needCancel(i)) {
-      allocated(i) := false.B
+      allocated(i)  := false.B
+      isRecorded(i) := false.B
     }
   }
 
@@ -322,7 +325,8 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val update_idx = rec_req.bits.uop.lqIdx.value
   val need_update = rec_req.valid && robIdx(update_idx) === rec_req.bits.uop.robIdx
   when (need_update){
-    records(update_idx) := rec_req.bits
+    records(update_idx)     := rec_req.bits
+    isRecorded(update_idx)  := true.B
   }
 
   val rec_upt_req = io.llc_rec_upt_req
@@ -335,7 +339,7 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   val rec_rsp = io.llc_rec_rsp
   for (i <- 0 until LoadPipelineWidth){
     val lq_idx = io.ldin(i).bits.uop.lqIdx.value
-    val hit = allocated(lq_idx) && robIdx(lq_idx) === io.ldin(i).bits.uop.robIdx
+    val hit = allocated(lq_idx) && robIdx(lq_idx) === io.ldin(i).bits.uop.robIdx && isRecorded(lq_idx)
 
     rec_rsp(i).valid  := io.ldin(i).valid && hit
     rec_rsp(i).bits   := records(lq_idx)

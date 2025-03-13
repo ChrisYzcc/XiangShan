@@ -175,7 +175,7 @@ class LLCRecordBundle()(implicit p: Parameters) extends XSBundle{
   val issue_pft = Bool()
 }
 
-class LLCTrainFilter(size: Int, name: String)(implicit p: Parameters) extends XSModule with HasTrainFilterHelper with HasLLCPrefetchHelper {
+class LLCTrainFilter(size: Int = 16, name: String)(implicit p: Parameters) extends XSModule with HasTrainFilterHelper with HasLLCPrefetchHelper {
   val io = IO(new Bundle{
     val ld_res = Flipped(Vec(backendParams.LdExuCnt, ValidIO(new LsPrefetchTrainBundle))) // max 3/cycle
     val pft_rec = Flipped(Vec(backendParams.LdExuCnt, ValidIO(new LLCRecordBundle()))) // max 3/cycle
@@ -298,7 +298,7 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
     needAlloc(i) := req_v && !entry_match && !prev_enq_match && !req.uop.robIdx.needFlush(io.redirect)
     canAlloc(i) := needAlloc(i) && allocPtr >= deqPtrExt && io.enable
 
-    XSPerfAccumulate(s"failToEnqPredReqFilter$i", needAlloc(i) && allocPtr < deqPtrExt)
+    XSPerfAccumulate(s"FailToEnqPredReqFilter$i", needAlloc(i) && allocPtr < deqPtrExt)
 
     when(canAlloc(i)) {
       valids(allocPtr.value) := true.B
@@ -388,10 +388,11 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
   val canAlloc = Cat(availableVec).orR
   val availableOH = PriorityEncoderOH(availableVec)
   val allocIdx = OHToUInt(availableOH)
-  assert(!io.gen_req.valid || canAlloc, "currently we always have free entry.")
+
+  XSPerfAccumulate("FailToEnqPftFilter", io.gen_req.valid && !canAlloc)
 
   val alloc_entry = entries(allocIdx)
-  when (io.gen_req.valid){
+  when (io.gen_req.valid && canAlloc){
     alloc_entry.vaddr := io.gen_req.bits.vaddr
     alloc_entry.uop   := io.gen_req.bits.uop
     alloc_entry.paddr_valid := false.B
@@ -540,7 +541,7 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
   enqPtrExt.foreach(x => when(needAlloc.asUInt.orR) {x := x + allocNum})
 
   // Weight
-  val init_val = Constantin.createRecord("weightInitVal", -4)
+  val init_val = Constantin.createRecord("weightInitVal", 0)
   val w_matrix = Reg(Vec(5, Vec(1 << featureBits, SInt(8.W))))
   when (reset.asBool) {
     for (i <- 0 until 5){
@@ -712,9 +713,9 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
   val io_l1_pf_req   = IO(Flipped(ValidIO(UInt(PAddrBits.W))))
   val io_sms_pf_req  = IO(Flipped(ValidIO(UInt(PAddrBits.W))))
 
-  val pred_filter = Module(new LLCPredReqFilter(size = 16, name = "pred_filter"))
-  val pft_filter = Module(new LLCPrefetchFilter(size = 16, name = "pft_filter"))
-  val train_filter = Module(new LLCTrainFilter(size = 72, name = "train_filter"))
+  val pred_filter = Module(new LLCPredReqFilter(size = 72, name = "pred_filter"))
+  val pft_filter = Module(new LLCPrefetchFilter(size = 72, name = "pft_filter"))
+  val train_filter = Module(new LLCTrainFilter(name = "train_filter"))
 
   val perceptron_prefetcher = Module(new PerceptronLLCPrefetcher())
   val random_prefetcher = Module(new RandomLLCPrefetcher())
