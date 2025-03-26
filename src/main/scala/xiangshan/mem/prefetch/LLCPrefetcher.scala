@@ -215,7 +215,7 @@ class LLCTrainFilter(size: Int = 16, name: String)(implicit p: Parameters) exten
   }
 
   for (i <- 0 until backendParams.LdExuCnt) {
-    val v = res(i).valid && rec(i).valid
+    val v = res(i).valid
 
     io.upt_pc(i).valid  := v
     io.upt_pc(i).bits   := res(i).bits.uop.pc
@@ -245,8 +245,15 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
     val enable = Input(Bool())
     val flush = Input(Bool())
     val ld_in = Flipped(Vec(backendParams.LduCnt, ValidIO(new MemExuInput())))
+
+    val predictor_info = Flipped(Vec(2, ValidIO(UInt(VAddrBits.W))))
+
+    val pft_filter_info = Flipped(Vec(72, ValidIO(UInt(VAddrBits.W))))
     val pred_req = DecoupledIO(new LLCPredReq())
   })
+
+  val predictor_info = io.predictor_info
+  val pft_filter_info = io.pft_filter_info
 
   class Ptr(implicit p: Parameters) extends CircularQueuePtr[Ptr]( p => size ){}
   object Ptr {
@@ -295,7 +302,14 @@ class LLCPredReqFilter(size: Int, name: String)(implicit p: Parameters) extends 
       case(pre, pre_v) => pre_v && block_addr(pre.vaddr) === block_addr(req.vaddr)
     }).orR
 
-    needAlloc(i) := req_v && !entry_match && !prev_enq_match && !req.uop.robIdx.needFlush(io.redirect)
+    val predictor_match = Cat(predictor_info.map(e => e.valid && block_addr(e.bits) === block_addr(req.vaddr))).orR
+
+    val pft_filter_match = Cat(pft_filter_info.map(e => e.valid && block_addr(e.bits) === block_addr(req.vaddr))).orR
+
+    dontTouch(predictor_match)
+    dontTouch(pft_filter_match)
+
+    needAlloc(i) := req_v && !entry_match && !prev_enq_match && !req.uop.robIdx.needFlush(io.redirect) && !predictor_match && !pft_filter_match
     canAlloc(i) := needAlloc(i) && allocPtr >= deqPtrExt && io.enable
 
     XSPerfAccumulate(s"FailToEnqPredReqFilter$i", needAlloc(i) && allocPtr < deqPtrExt)
@@ -359,11 +373,15 @@ class LLCPrefetchReqBundle()(implicit p: Parameters) extends PrefetchReqBundle{
   val uop = new DynInst
 }
 
-class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends XSModule {
+class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends XSModule with HasLLCPrefetchHelper {
   val io = IO(new Bundle(){
+    val redirect = Flipped(Valid(new Redirect))
+
     val gen_req = Flipped(ValidIO(new LLCPrefetchReqBundle()))
     val tlb_req = new TlbRequestIO(2)
     val pmp_resp = Flipped(new PMPRespBundle())
+
+    val pft_filter_info = Vec(72, ValidIO(UInt(VAddrBits.W)))
 
     val llc_pf_req = ValidIO(new Bundle{
       val paddr = UInt(PAddrBits.W)
@@ -381,6 +399,18 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
 
   val tlb_req_arb = Module(new RRArbiterInit(new TlbReq, size))
 
+  // redirect check
+  val redirect_vec = entries.zip(valids).map{
+    case (e, v) =>
+      v && e.uop.robIdx.needFlush(io.redirect)
+  }
+
+  for (i <- 0 until size){
+    when (redirect_vec(i)){
+      valids(i) := false.B
+    }
+  }
+
   // enq logic
   // TODO: add vaddr & paddr hit check
   // TODO: add plru if there is no available entry
@@ -389,10 +419,19 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
   val availableOH = PriorityEncoderOH(availableVec)
   val allocIdx = OHToUInt(availableOH)
 
+  val entry_hit_vec = entries.zip(valids).map{
+    case (e, v) =>
+      v && block_addr(e.vaddr) === block_addr(io.gen_req.bits.vaddr)
+  }
+  val entry_hit = Cat(entry_hit_vec).orR
+  XSPerfAccumulate("ReqDuplicated", io.gen_req.valid && entry_hit)
+
+  val needAlloc = io.gen_req.valid && canAlloc && !io.gen_req.bits.uop.robIdx.needFlush(io.redirect) && !entry_hit
+
   XSPerfAccumulate("FailToEnqPftFilter", io.gen_req.valid && !canAlloc)
 
   val alloc_entry = entries(allocIdx)
-  when (io.gen_req.valid && canAlloc){
+  when (needAlloc){
     alloc_entry.vaddr := io.gen_req.bits.vaddr
     alloc_entry.uop   := io.gen_req.bits.uop
     alloc_entry.paddr_valid := false.B
@@ -402,7 +441,7 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
 
   // deq logic
   for (i <- 0 until size) {
-    l3_pf_req_arb.io.in(i).valid  := entries(i).paddr_valid && valids(i)
+    l3_pf_req_arb.io.in(i).valid  := entries(i).paddr_valid && valids(i) && !redirect_vec(i)
     l3_pf_req_arb.io.in(i).bits.paddr := entries(i).paddr
     l3_pf_req_arb.io.in(i).bits.uop   := entries(i).uop
 
@@ -423,7 +462,7 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
   for (i <- 0 until size) {
     val has_tlb_req_fire = RegNext(tlb_req_arb.io.in(i).fire, false.B)
 
-    tlb_req_arb.io.in(i).valid := valids(i) && !entries(i).paddr_valid && !has_tlb_req_fire
+    tlb_req_arb.io.in(i).valid := valids(i) && !entries(i).paddr_valid && !has_tlb_req_fire && !redirect_vec(i)
     tlb_req_arb.io.in(i).bits := DontCare
     tlb_req_arb.io.in(i).bits.vaddr := entries(i).vaddr
     tlb_req_arb.io.in(i).bits.cmd := TlbCmd.read
@@ -438,7 +477,7 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
     *   Cycle 1: tlb req fire
     *   Cycle 2: tlb & pmp resp arrives
     * */
-    val update_valid = has_tlb_req_fire && tlb_resp.fire && !tlb_resp.bits.miss
+    val update_valid = has_tlb_req_fire && tlb_resp.fire && !tlb_resp.bits.miss && !redirect_vec(i)
     val drop = tlb_resp.bits.excp.head.pf.ld || tlb_resp.bits.excp.head.gpf.ld || tlb_resp.bits.excp.head.af.ld ||  // page/access fault
       pmp_resp.mmio || Pbmt.isUncache(tlb_resp.bits.pbmt.head) || // uncache
       pmp_resp.ld   // pmp access fault
@@ -448,6 +487,13 @@ class LLCPrefetchFilter(size: Int, name: String)(implicit p: Parameters) extends
       entries(i).paddr  := Cat(tlb_resp.bits.paddr.head(PAddrBits - 1, log2Ceil(64)), 0.U(log2Ceil(64).W))  // TODO: parameterize
       entries(i).paddr_valid  := !drop
     }
+  }
+
+  // Info
+  require(size == 72)
+  for (i <- 0 until size){
+    io.pft_filter_info(i).valid := valids(i)
+    io.pft_filter_info(i).bits  := entries(i).vaddr
   }
 }
 
@@ -477,8 +523,9 @@ class RandomLLCPrefetcher()(implicit p: Parameters) extends BaseLLCPrefetcher {
 }
 
 class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) extends BaseLLCPrefetcher with HasLLCPrefetcherParam {
-  val io_upt_vaddr  = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(UInt(VAddrBits.W)))))
-  val io_upt_pc     = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(UInt(VAddrBits.W)))))
+  val io_upt_vaddr  = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(UInt(VAddrBits.W)))))    // for training
+  val io_upt_pc     = IO(Flipped(Vec(backendParams.LdExuCnt, ValidIO(UInt(VAddrBits.W)))))    // for training
+  val io_predictor_info = IO(Vec(2, ValidIO(UInt(VAddrBits.W))))
 
   io.pred_req.ready := true.B
 
@@ -637,6 +684,7 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
   val use_sat_cnt = Constantin.createRecord("useSaturateCnt", false)
   val sat_positive = use_sat_cnt && (sat_cnt >= 5.S) || !use_sat_cnt
 
+  val use_fwd_info = Constantin.createRecord("usePredictorFwdInfo", false)
   /*------------------------------ s1 ------------------------------*/
   val s1_valid = io.pred_req.valid && !io.pred_req.bits.uop.robIdx.needFlush(io.redirect)
 
@@ -671,6 +719,9 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
     weights(i)  := w_matrix(i)(feat_idx(i))
   }
 
+  io_predictor_info(0).valid  := s1_valid & use_fwd_info
+  io_predictor_info(0).bits   := vaddr
+
   /*------------------------------ s2 ------------------------------*/
   val req_reg = RegNext(io.pred_req.bits)
   val feat_idx_reg = RegNext(feat_idx)
@@ -681,6 +732,9 @@ class PerceptronLLCPrefetcher(last_pc_num: Int = 4)(implicit p: Parameters) exte
   val sum = weights.reduce(_ + _)
   val above_threshold = sum > tau_act.asSInt
   dontTouch(sum)
+
+  io_predictor_info(1).valid  := s2_valid & use_fwd_info
+  io_predictor_info(1).bits   := req_reg.vaddr
 
   // to prefetch filter
   io.pft_req.valid  := above_threshold && s2_valid && sat_positive
@@ -729,6 +783,8 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
   random_prefetcher.io.redirect.bits      := io_redirect.bits
   pred_filter.io.redirect.valid           := io_redirect.valid & use_redirect
   pred_filter.io.redirect.bits            := io_redirect.bits
+  pft_filter.io.redirect.valid            := io_redirect.valid & use_redirect
+  pft_filter.io.redirect.bits             := io_redirect.bits
 
   // default
   io_rec_req  <> DontCare
@@ -738,17 +794,21 @@ class LLCPrefetcher()(implicit p: Parameters) extends BasePrefecher {
   pred_filter.io.enable := io.enable
   pred_filter.io.flush  := false.B
   pred_filter.io.ld_in  <> io_pred_in
+  pred_filter.io.pft_filter_info  <> pft_filter.io.pft_filter_info
+  pred_filter.io.predictor_info   <> DontCare
 
   when (use_perceptron){
     perceptron_prefetcher.io.pred_req   <> pred_filter.io.pred_req
     perceptron_prefetcher.io.pft_req    <> pft_filter.io.gen_req
     perceptron_prefetcher.io.pft_rec    <> io_rec_req
     perceptron_prefetcher.io.train_req  <> train_filter.io.train_req
+    perceptron_prefetcher.io_predictor_info <> pred_filter.predictor_info
   }.otherwise{
     perceptron_prefetcher.io.pred_req   <> DontCare
     perceptron_prefetcher.io.pft_req    <> DontCare
     perceptron_prefetcher.io.pft_rec    <> DontCare
     perceptron_prefetcher.io.train_req  <> DontCare
+    perceptron_prefetcher.io_predictor_info <> DontCare
   }
 
   when (use_random){
