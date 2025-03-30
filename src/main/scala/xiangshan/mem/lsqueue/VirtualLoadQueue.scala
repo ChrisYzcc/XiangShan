@@ -30,7 +30,7 @@ import xiangshan.backend.decode.isa.bitfield.{InstVType, XSInstBitFields}
 import xiangshan.backend.fu.FuType
 import xiangshan.mem.Bundles._
 import xiangshan.cache._
-import xiangshan.mem.prefetch.LLCRecordBundle
+import xiangshan.mem.prefetch.LLCPrefetchRecord
 
 class VirtualLoadQueue(implicit p: Parameters) extends XSModule
   with HasDCacheParameters
@@ -57,9 +57,8 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
     // for topdown
     val noUopsIssued = Input(Bool())
     // for llc prefetcher
-    val llc_rec_req = Flipped(ValidIO(new LLCRecordBundle))
-    val llc_rec_upt_req = Flipped(ValidIO(new LLCRecordBundle))
-    val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCRecordBundle))
+    val llc_rec_req = Flipped(ValidIO(new LLCPrefetchRecord))
+    val llc_rec_rsp = Vec(LoadPipelineWidth, ValidIO(new LLCPrefetchRecord))
   })
 
   println("VirtualLoadQueue: size: " + VirtualLoadQueueSize)
@@ -320,20 +319,13 @@ class VirtualLoadQueue(implicit p: Parameters) extends XSModule
    *  When the load instructions are committed, the meta data will be provided to LLC Pft for training.
    * */
   val rec_req = io.llc_rec_req
-  val records = RegInit(VecInit(Seq.fill(VirtualLoadQueueSize){0.U.asTypeOf(new LLCRecordBundle)}))
+  val records = RegInit(VecInit(Seq.fill(VirtualLoadQueueSize){0.U.asTypeOf(new LLCPrefetchRecord)}))
 
   val update_idx = rec_req.bits.uop.lqIdx.value
   val need_update = rec_req.valid && robIdx(update_idx) === rec_req.bits.uop.robIdx
   when (need_update){
     records(update_idx)     := rec_req.bits
     isRecorded(update_idx)  := true.B
-  }
-
-  val rec_upt_req = io.llc_rec_upt_req
-  val upt_update_idx = rec_upt_req.bits.uop.lqIdx.value
-  val upt_need_update = rec_upt_req.valid && robIdx(upt_update_idx) === rec_upt_req.bits.uop.robIdx
-  when (upt_need_update) {
-    records(upt_update_idx).issue_pft  := rec_upt_req.bits.issue_pft
   }
 
   val rec_rsp = io.llc_rec_rsp

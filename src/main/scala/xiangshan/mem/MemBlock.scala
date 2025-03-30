@@ -616,7 +616,6 @@ class MemBlockInlinedImp(outer: MemBlockInlined) extends LazyModuleImp(outer)
 
   // llc prefetch rec req
   llc_prefetcher.io_rec_req     <> lsq.io.llc_rec_req
-  llc_prefetcher.io_rec_upt_req <> lsq.io.llc_rec_upt_req
 
   // load/store prefetch to l2 cache
   prefetcherOpt.foreach(sms_pf => {
