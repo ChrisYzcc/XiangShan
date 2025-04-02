@@ -18,6 +18,19 @@ gen_dram:
     DRAMSIM3_HOME=~/DRAMsim3 \
     make emu -j200 EMU_THREADS=16 EMU_TRACE=fst CONFIG=$(CONFIG) WITH_DRAMSIM3=1 | tee compile.log
 
+PGO_OUT = $(NOOP_HOME)/rpt/pgo_simulation_out.txt
+PGO_ERR = $(NOOP_HOME)/rpt/pgo_simulation_err.txt
+
+gen_dram_pgo:
+	NOOP_HOME=$(shell pwd) \
+    NEMU_HOME=$(shell pwd) \
+    DRAMSIM3_HOME=~/DRAMsim3 \
+    make emu -j200 EMU_THREADS=8 EMU_TRACE=fst CONFIG=$(CONFIG) WITH_DRAMSIM3=1  \
+         PGO_WORKLOAD=`realpath ready-to-run/coremark-2-iteration.bin` \
+		 PGO_EMU_ARGS='--diff $(DIFF_SO)'\
+         LLVM_PROFDATA=llvm-profdata \
+		 | tee compile.log
+
 WORKLOAD ?= microbench
 WORKLOAD_PATH ?=
 DIFF_SO = $(NOOP_HOME)/ready-to-run/riscv64-nemu-interpreter-so
